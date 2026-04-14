@@ -1,56 +1,67 @@
-# projeto_final_integrador_I
-Sistema web para monitoramento inteligente de prazos processuais jurídicos, com cálculo automatizado de prazos, gerenciamento de processos e alertas para advogados.
-
-## 🚀 Tecnologias
-- **Python 3.10+**
-- **FastAPI**
-- **PostgreSQL 15**
-- **SQLAlchemy**
-- **Docker & Docker Compose**
 
 ---
 
-## 📋 Pré-requisitos
-- Docker e Docker Compose instalados.
-- Arquivo `.env` configurado na raiz do projeto.
+# ⚖️ Argus Legis API
 
-## 🛠️ Como Rodar o Projeto (O Jeito Fácil)
-
-Para subir o ambiente completo (API + Banco de Dados), você só precisa de um comando:
-
-```bash
-docker-compose up --build
-```
-
-Após o carregamento, a documentação interativa (Swagger) estará disponível em:
-👉 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-> 💡 **Importante:** No arquivo `.env`, certifique-se de que a `DATABASE_URL` aponta para o host **db** (ex: `postgresql://user:pass@db:5432/db_name`), caso contrário, o container da API não conseguirá alcançar o banco de dados.
+O **Argus Legis** é um sistema de gestão jurídica de alto desempenho, desenvolvido para centralizar e automatizar o acompanhamento de processos judiciais, gestão de prazos e controle de clientes. Esta API foi construída com foco em **escalabilidade, integridade de dados e arquitetura modular**.
 
 ---
 
+## 🚀 Tecnologias Utilizadas
+
+* **Linguagem:** Python 3.11+
+* **Framework:** FastAPI (Backend Assíncrono)
+* **ORM:** SQLAlchemy (Persistência de dados)
+* **Banco de Dados:** PostgreSQL
+* **Validação:** Pydantic V2 (Uso de `Annotated` e `AfterValidator`)
+* **Infraestrutura:** Docker & Docker Compose
 ---
 
-## 🧪 Guia de Testes
+## 🏗️ Arquitetura do Projeto
 
-Para validar as rotas implementadas, siga esta ordem no Swagger:
+O sistema adota uma **Arquitetura Modular**, separando responsabilidades para facilitar a manutenção e o desenvolvimento em equipe:
 
-1. **Escritório:** Crie um escritório no `POST /escritorios/`.
-2. **Usuário:** Crie um usuário no `POST /usuarios/` usando o `escritorio_id` gerado.
-3. **Cliente:** Cadastre um cliente (Ex: Mesa Verde) no `POST /clientes/`.
-4. **Processo:** No `POST /processos/`, vincule o `cliente_id` e o `responsavel_id`.
-5. **Agenda de Prazos:** - Cadastre um prazo no `POST /prazos/` vinculado ao processo.
-   - Liste os prazos de um processo específico no `GET /processos/{id_processo}/prazos/`.
-   - Marque como concluído no `PATCH /prazos/{prazo_id}` enviando `{"finalizado": true}`.
+* **`app/models/`**: Definição das entidades do banco de dados e relacionamentos (SQLAlchemy).
+* **`app/schemas/`**: Contratos de entrada e saída de dados com validação automática (Pydantic).
+* **`app/routes/`**: Divisão de endpoints por contexto (Processos, Prazos, Usuários, etc.) via `APIRouter`.
+* **`app/utils/`**: Utilitários e validadores customizados.
+* **`app/database.py`**: Configuração da engine e sessão do banco de dados.
 
 ---
 
-## 📂 Estrutura Principal
-- `main.py`: Endpoints e lógica da API.
-- `models.py`: Tabelas do banco de dados.
-- `schemas.py`: Validações de entrada e saída (Pydantic).
-- `docker-compose.yml`: Orquestração dos containers.
-- `Dockerfile`: Define a criação da imagem da API
-- `requirements.txt`: Dependências do projeto
+## 🛡️ Destaques de Implementação
 
+### 1. Integridade de Dados e Validação Rigorosa
+Implementamos uma validação jurídica brasileira (CPF, CNPJ e CNJ). Utilizando `Annotated` do Pydantic V2, os dados são padronizados (remoção de caracteres especiais) antes de atingirem o banco de dados, garantindo buscas rápidas e sem inconsistências.
 
+### 2. Hierarquia e Multi-tenancy
+O sistema utiliza o conceito de **Escritório** como raiz. Usuários, clientes e processos são isolados logicamente por escritório, com suporte a exclusão em cascata para evitar dados órfãos.
 
+### 3. Busca Resiliente e UX
+O endpoint de listagem de processos suporta filtros acumulativos e busca por **CNJ parcial**. Graças ao uso do operador `contains` e pré-limpeza via Regex, o advogado pode encontrar processos mesmo digitando números incompletos ou com máscaras variadas.
+
+### 4. Alta Performance (Paginação e Ordenação)
+Todos os endpoints de listagem implementam paginação nativa (`skip` e `limit`) e ordenação decrescente por ID, garantindo que o sistema permaneça performático mesmo com grandes volumes de dados.
+
+---
+
+## 📦 Como Executar o Projeto
+
+O projeto é totalmente conteinerizado via Docker. Para rodar o ambiente completo (API + PostgreSQL):
+
+1.  **Clone o repositório:**
+    ```bash
+    git clone [url-do-repositorio]
+    cd argus-legis
+    ```
+
+2.  **Suba os containers:**
+    ```bash
+    docker-compose up --build
+    ```
+
+3.  **Acesse a API:**
+    Acesse `http://localhost:8000` para conferir o status online.
+
+4.  **Documentação Interativa:**
+    Acesse `http://localhost:8000/docs` para visualizar o Swagger UI e testar os endpoints.
