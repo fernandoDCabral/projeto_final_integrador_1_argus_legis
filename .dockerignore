@@ -1,0 +1,8 @@
+# Docker irá ignorar os seguintes arquivos e pastas 
+# ao construir a imagem
+__pycache__/
+*.pyc
+.git/
+.env
+venv/
+.vscode/
