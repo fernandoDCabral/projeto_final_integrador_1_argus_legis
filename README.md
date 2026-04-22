@@ -1,53 +1,78 @@
 
 ---
 
-# ⚖️ Argus Legis API
+# ⚖️ Argus Legis
 
-O **Argus Legis** é um sistema de gestão jurídica de alto desempenho, desenvolvido para centralizar e automatizar o acompanhamento de processos judiciais, gestão de prazos e controle de clientes. Esta API foi construída com foco em **escalabilidade, integridade de dados e arquitetura modular**.
+O **Argus Legis** é um ecossistema completo de gestão jurídica, projetado para centralizar e automatizar o acompanhamento de processos judiciais, gestão de prazos e controle de clientes. O sistema utiliza uma arquitetura moderna e conteinerizada para garantir alta performance e escalabilidade.
+
+---
+
+## 🏗️ Arquitetura do Sistema
+
+O projeto é estruturado em três camadas principais que operam de forma integrada através de containers Docker:
+
+
+
+1.  **Frontend (Interface):** Desenvolvido em React + Vite, focado em uma UX fluida para advogados.
+2.  **Backend (API):** Construído com FastAPI, responsável pelas regras de negócio e validações jurídicas.
+3.  **Database (Persistência):** PostgreSQL 15, garantindo integridade e segurança dos dados jurídicos.
 
 ---
 
 ## 🚀 Tecnologias Utilizadas
 
-* **Linguagem:** Python 3.11+
-* **Framework:** FastAPI (Backend Assíncrono)
-* **ORM:** SQLAlchemy (Persistência de dados)
-* **Banco de Dados:** PostgreSQL
-* **Validação:** Pydantic V2 (Uso de `Annotated` e `AfterValidator`)
-* **Infraestrutura:** Docker & Docker Compose
----
+### **Frontend**
+* **React + Vite:** Interface reativa de alta performance.
+* **Tailwind CSS:** Design modular e responsivo.
+* **Axios:** Comunicação assíncrona com a API.
 
-## 🏗️ Arquitetura do Projeto
+### **Backend**
+* **Python 3.11+ & FastAPI:** Processamento assíncrono.
+* **SQLAlchemy:** Mapeamento objeto-relacional (ORM).
+* **Pydantic V2:** Validação rigorosa de dados (CPF, CNPJ, CNJ).
 
-O sistema adota uma **Arquitetura Modular**, separando responsabilidades para facilitar a manutenção e o desenvolvimento em equipe:
-
-* **`app/models/`**: Definição das entidades do banco de dados e relacionamentos (SQLAlchemy).
-* **`app/schemas/`**: Contratos de entrada e saída de dados com validação automática (Pydantic).
-* **`app/routes/`**: Divisão de endpoints por contexto (Processos, Prazos, Usuários, etc.) via `APIRouter`.
-* **`app/utils/`**: Utilitários e validadores customizados.
-* **`app/database.py`**: Configuração da engine e sessão do banco de dados.
+### **Infraestrutura**
+* **Docker & Docker Compose:** Padronização do ambiente de desenvolvimento.
+* **PostgreSQL:** Banco de dados relacional robusto.
 
 ---
 
-## 🛡️ Destaques de Implementação
+## 📂 Estrutura de Diretórios
 
-### 1. Integridade de Dados e Validação Rigorosa
-Implementamos uma validação jurídica brasileira (CPF, CNPJ e CNJ). Utilizando `Annotated` do Pydantic V2, os dados são padronizados (remoção de caracteres especiais) antes de atingirem o banco de dados, garantindo buscas rápidas e sem inconsistências.
-
-### 2. Hierarquia e Multi-tenancy
-O sistema utiliza o conceito de **Escritório** como raiz. Usuários, clientes e processos são isolados logicamente por escritório, com suporte a exclusão em cascata para evitar dados órfãos.
-
-### 3. Busca Resiliente e UX
-O endpoint de listagem de processos suporta filtros acumulativos e busca por **CNJ parcial**. Graças ao uso do operador `contains` e pré-limpeza via Regex, o advogado pode encontrar processos mesmo digitando números incompletos ou com máscaras variadas.
-
-### 4. Alta Performance (Paginação e Ordenação)
-Todos os endpoints de listagem implementam paginação nativa (`skip` e `limit`) e ordenação decrescente por ID, garantindo que o sistema permaneça performático mesmo com grandes volumes de dados.
+```text
+argus_legis/
+├── app/                # Código-fonte da API (Backend Python)
+├── frontend/           # Interface do usuário (React + Vite)
+├── database/           # Scripts e volumes do banco de dados
+├── .env                # Variáveis de ambiente globais
+└── docker-compose.yml  # Maestro da orquestração dos serviços
+```
 
 ---
 
-## 📦 Como Executar o Projeto
+## ⚙️ Variáveis de Ambiente (.env)
 
-O projeto é totalmente conteinerizado via Docker. Para rodar o ambiente completo (API + PostgreSQL):
+Para rodar o projeto, crie um arquivo `.env` na raiz seguindo o modelo:
+
+```env
+# Configurações do Banco de Dados
+POSTGRES_USER=admin_argus
+POSTGRES_PASSWORD=sua_senha_aqui
+POSTGRES_DB=argus_db
+POSTGRES_PORT=5432
+
+# Configurações do Frontend
+VITE_API_URL=http://localhost:8000
+```
+
+---
+
+## 📦 Como Executar o Ambiente Completo
+
+O projeto utiliza **Docker Healthchecks** para garantir que os serviços subam na ordem correta:
+`Banco de Dados (Healthy) -> API (Online) -> Frontend (Disponível)`.
+
+
 
 1.  **Clone o repositório:**
     ```bash
@@ -57,11 +82,24 @@ O projeto é totalmente conteinerizado via Docker. Para rodar o ambiente complet
 
 2.  **Suba os containers:**
     ```bash
-    docker-compose up --build
+    docker compose up --build
     ```
 
-3.  **Acesse a API:**
-    Acesse `http://localhost:8000` para conferir o status online.
+3.  **Acesse os serviços:**
+    * **Frontend:** [http://localhost:5173](http://localhost:5173) (Interface do Advogado)
+    * **API Backend:** [http://localhost:8000](http://localhost:8000) (Status do Sistema)
+    * **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) (Documentação Técnica)
 
-4.  **Documentação Interativa:**
-    Acesse `http://localhost:8000/docs` para visualizar o Swagger UI e testar os endpoints.
+---
+
+## 🛡️ Destaques de Engenharia
+
+* **Resiliência de Startup:** Implementação de `healthchecks` no Docker Compose para evitar erros de conexão na inicialização.
+* **Segurança (CORS):** Middleware configurado para permitir comunicação segura entre o domínio do frontend e a API.
+* **Validação Jurídica:** Limpeza e validação de documentos brasileiros e numeração de processos CNJ em nível de API.
+
+---
+*Desenvolvido como projeto de Engenharia de Software - 2026.*
+
+---
+
