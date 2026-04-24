@@ -5,4 +5,7 @@ __pycache__/
 .git/
 .env
 venv/
+env_juridico
 .vscode/
+frontend/
+node_modules/

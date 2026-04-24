@@ -1,6 +1,5 @@
 .env
 .env.local
-.env.sample
 env_juridico/
 venv/
 .venv/
@@ -12,14 +11,33 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+.eslintcache
+*.tsbuildinfo
+
 .vscode/
 !.vscode/settings.json
 !.vscode/task.json
 !.vscode/launch.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 *.db
 *.sqlite3
 docker-volumes/
+pgdata/
+postgres_data/
 
 Thumbs.db
 desktop.ini
