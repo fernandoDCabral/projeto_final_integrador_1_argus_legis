@@ -33,7 +33,6 @@ services:
         condition: service_healthy
     volumes:
       - .:/app
-<<<<<<< HEAD
   
   frontend:
     build:
@@ -48,10 +47,5 @@ services:
       - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
     depends_on:
       - app
-volumes:
-  postgres_data:
-=======
->>>>>>> main
-
 volumes:
   postgres_data:
