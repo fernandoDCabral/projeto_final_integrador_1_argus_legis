@@ -27,12 +27,13 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env 
+      - .env
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - .:/app
+<<<<<<< HEAD
   
   frontend:
     build:
@@ -49,5 +50,8 @@ services:
       - app
 volumes:
   postgres_data:
+=======
+>>>>>>> main
 
-  
+volumes:
+  postgres_data:
