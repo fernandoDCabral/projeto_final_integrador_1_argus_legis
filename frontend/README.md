@@ -43,7 +43,8 @@ A "central de comando" do advogado após o acesso ao sistema:
 ### 1. Variáveis de Ambiente
 O projeto utiliza variáveis de ambiente para definir a URL da API.
 * **Variável:** `VITE_API_URL`
-* **Acesso (TS):** ```typescript
+* **Acesso (TS):**
+* ```typescript
     const API_URL = import.meta.env.VITE_API_URL;
     ```
 
