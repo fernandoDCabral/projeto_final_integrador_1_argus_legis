@@ -3,8 +3,11 @@
 __pycache__/
 *.pyc
 .git/
+.gitignore
+README.md
 .env
 venv/
+.venv/
 env_juridico
 .vscode/
 frontend/

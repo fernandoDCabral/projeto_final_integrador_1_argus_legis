@@ -1,17 +1,33 @@
 import React, { useState } from 'react';
+import { login } from '../services/authService';
+import type { LoginData } from '../types/auth';
+import { useAuth } from '../contexts/AuthContext';
 
-interface LoginProps {
-  onLogin: () => void;
-}
-
-export default function Login({ onLogin }: LoginProps) {
+// Removido o uso de LoginProps, pois irá ser utilizado
+// o contexto useAuth
+export default function Login() {
+  const { login } = useAuth();
   const [isCadastro, setIsCadastro] = useState(false);
   const [perfil, setPerfil] = useState('Advogado');
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // No futuro, aqui enviaremos para o Python/PostgreSQL [cite: 119]
-    onLogin();
+    setErro(''); // Limpa erros anteriores
+
+    try{
+      // Lembrar que para o cadastro, adicionar a variável nome
+      await login({email, senha});
+
+    } catch (error: any){
+      const mensagemErro = error.response?.data?.detail 
+      setErro(mensagemErro || "Erro ao conectar ao servidor");
+    }
+    
   };
 
   return (
@@ -25,18 +41,36 @@ export default function Login({ onLogin }: LoginProps) {
           {isCadastro && (
             <div style={rowStyle}>
               <label style={labelStyle}>Nome:</label>
-              <input type="text" style={inputStyle} required />
+              <input 
+              type="text" 
+              style={inputStyle} 
+              required 
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              />
             </div>
           )}
 
           <div style={rowStyle}>
             <label style={labelStyle}>E-mail:</label>
-            <input type="email" style={inputStyle} required />
+            <input 
+              type="email" 
+              style={inputStyle}
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)} 
+            />
           </div>
           
           <div style={rowStyle}>
             <label style={labelStyle}>Senha:</label>
-            <input type="password" style={inputStyle} required />
+            <input 
+              type="password" 
+              style={inputStyle} 
+              required
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)} 
+            />
           </div>
 
           {isCadastro && (
@@ -53,6 +87,12 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
           )}
           
+          {erro &&(
+            <p style={{color: 'red', fontSize: '13px', marginBottom: '10px'}}>
+              {erro}
+            </p>
+          )}
+
           <button type="submit" style={buttonStyle}>
             {isCadastro ? 'Cadastrar' : 'ENTRAR'}
           </button>

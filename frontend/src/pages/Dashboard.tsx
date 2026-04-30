@@ -4,9 +4,10 @@ import React from "react";
 // 1. Definimos que o Dashboard agora aceita o onLogout
 interface DashboardProps {
   onLogout: () => void;
+  nome?: string;
 }
 
-export default function Dashboard({ onLogout }: DashboardProps) {
+export default function Dashboard({ onLogout, nome }: DashboardProps) {
   return (
     <div
       style={{
@@ -86,7 +87,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               border: "1px solid #ddd",
             }}
           >
-            <h2>Bem-vindo ao sistema!</h2>
+            <h2>Bem-vindo ao sistema {nome}!</h2>
             <p>Você está logado com sucesso.</p>
           </div>
         </section>
