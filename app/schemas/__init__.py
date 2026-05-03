@@ -3,3 +3,4 @@ from .usuario import UsuarioBase, UsuarioCreate, UsuarioResponse
 from .cliente import ClienteBase, ClienteCreate, ClienteResponse
 from .processo import ProcessoBase, ProcessoCreate, ProcessoResponse
 from .prazo import PrazoBase, PrazoCreate, PrazoResponse, PrazoUpdate
+from .auth import LoginResponse,LoginRequest,LoginUserResponse

@@ -2,18 +2,25 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from app import models, schemas, database
+from passlib.context import CryptContext
 
 router = APIRouter(
     prefix="/usuarios",
     tags=["Usuarios"]
 )
 
+senha = CryptContext(schemes=["bcrypt"], deprecated = "auto")
+
 @router.post("/", response_model=schemas.UsuarioResponse)
 def criar_usuario(
     usuario: schemas.UsuarioCreate, 
     db: Session = Depends(database.get_db)
 ):
-    novo_usuario = models.Usuario(**usuario.model_dump())
+    
+    dados = usuario.model_dump()
+    dados["senha"] = senha.hash(dados.pop("senha"))
+    novo_usuario = models.Usuario(**dados)
+    
     db.add(novo_usuario)
     db.commit()
     db.refresh(novo_usuario)
