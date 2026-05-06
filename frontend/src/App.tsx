@@ -11,7 +11,7 @@ function AppContent() {
   if (carregando) return <div>Carregando Argus Legis...</div>;
 
   return estaLogado ? (
-    // Agora o Dashboard pode usar o nome do usuário vindo do contexto!
+    // Variáveis como nome e e-mail estão disponíveis para uso
     <Dashboard nome={usuario?.nome} onLogout={logout} />
   ) : (
     <Login />

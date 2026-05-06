@@ -3,7 +3,7 @@ from app.schemas.auth import LoginBase
 
 router = APIRouter(
     prefix="/auth",
-    tags=["Autentificação"]
+    tags=["Autenticação"]
 )
 
 @router.post("/login")

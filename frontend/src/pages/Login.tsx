@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { login } from '../services/authService';
-import type { LoginData } from '../types/auth';
 import { useAuth } from '../contexts/AuthContext';
 
 // Removido o uso de LoginProps, pois irá ser utilizado
@@ -27,7 +25,6 @@ export default function Login() {
       const mensagemErro = error.response?.data?.detail 
       setErro(mensagemErro || "Erro ao conectar ao servidor");
     }
-    
   };
 
   return (
