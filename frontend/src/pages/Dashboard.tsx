@@ -1,12 +1,10 @@
 // src/pages/Dashboard.tsx
 import React from "react";
+import { useAuth } from "../contexts/AuthContext";
 
-// 1. Definimos que o Dashboard agora aceita o onLogout
-interface DashboardProps {
-  onLogout: () => void;
-}
-
-export default function Dashboard({ onLogout }: DashboardProps) {
+export default function Dashboard() {
+  const { user, logout } = useAuth();
+  
   return (
     <div
       style={{
@@ -50,7 +48,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
         {/* Botão Sair - O 'flex: 1' acima vai empurrar este botão para o rodapé */}
         <button
-          onClick={onLogout}
+          onClick={logout}
           style={{
             backgroundColor: "#c0392b",
             color: "white",
@@ -86,8 +84,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               border: "1px solid #ddd",
             }}
           >
-            <h2>Bem-vindo ao sistema!</h2>
-            <p>Você está logado com sucesso.</p>
+            <h2>Bem-vindo, {user?.name || user?.email || "Advogado"}!</h2>
+            <p style={{ color: "#666"}}>
+              Sessão ativa para <strong>{user?.email}</strong>
+            </p>
+            <p>Você está logado com sucesso no Argus Legis.</p>
           </div>
         </section>
       </main>

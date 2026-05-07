@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from app import models, routes
 from app.database import engine
@@ -14,7 +15,7 @@ app = FastAPI(
 
 # CORS - permissões de acesso
 origins = [
-    "http://localhost:5173",
+    os.getenv("FRONTEND_URL", "http://localhost:5173"),
     "http://127.0.0.1:5173"
 ]
 
@@ -35,4 +36,5 @@ app.include_router(routes.usuarios_router)
 app.include_router(routes.clientes_router)
 app.include_router(routes.processos_router)
 app.include_router(routes.prazos_router)
+# Rota do Sávio
 app.include_router(routes.autenticacoes_router)
