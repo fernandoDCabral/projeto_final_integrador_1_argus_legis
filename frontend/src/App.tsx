@@ -1,22 +1,22 @@
 // src/App.tsx
 import React, { useState } from "react";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Dashboard from "./pages/Dashboard";
-import Login from "./pages/Login"; // Vamos criar esse já já
+import Login from "./pages/Login"; 
 
-function App() {
-  // Esse "state" vai controlar se mostramos Login ou Dashboard
-  const [estaLogado, setEstaLogado] = useState(false);
+function AppContent() {
+  const { estaLogado, carregando } = useAuth();
 
-  return (
-    <>
-      {estaLogado ? (
-        <Dashboard onLogout={() => setEstaLogado(false)}/>
-      ) : (
-        // Passamos a função de logar para dentro do Login
-        <Login onLogin={() => setEstaLogado(true)} />
-      )}
-    </>
-  );
+  // Enquanto o Context verifica o localStorage
+  if (carregando) return <div>Carregando Argus Legis...</div>;
+
+  return estaLogado ? <Dashboard /> : <Login />;
 }
 
-export default App;
+export default function App() {
+  return(
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
