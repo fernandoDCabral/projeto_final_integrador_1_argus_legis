@@ -13,12 +13,16 @@ class ProcessoBase(BaseModel):
     titulo: str
     tribunal: str
     status: str = "Ativo"
+    tipo_processo: str
 
 class ProcessoCreate(ProcessoBase):
     cliente_id: int
     responsavel_id: int
     criador_id: int
     escritorio_id: int
+
+class ProcessoUpdate(ProcessoCreate):
+    pass
 
 class ProcessoResponse(ProcessoBase):
     id: int
@@ -28,3 +32,11 @@ class ProcessoResponse(ProcessoBase):
     criador: UsuarioResponse
     prazos: List[PrazoResponse]
     model_config = ConfigDict(from_attributes=True)
+
+class ProcessoPrazoMovimentacaoResponse(BaseModel):
+    processo_id: int
+    tipo_processo: str
+    prazo_dias: int
+    data_cadastro: datetime
+    data_limite: datetime
+    dias_restantes: int

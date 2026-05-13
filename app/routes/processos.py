@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import re
 from app import models, schemas, database
+from app.service import prazo_service
 
 router = APIRouter(
     prefix="/processos",
@@ -41,6 +42,67 @@ def listar_processos(
     
     return query.order_by(
         models.Processo.id.desc()).offset(skip).limit(limit).all()
+
+@router.get("/{processo_id}", response_model=schemas.ProcessoResponse)
+def buscar_processo(
+    processo_id: int,
+    db: Session = Depends(database.get_db)
+):
+    processo = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado!")
+
+    return processo
+
+@router.put("/{processo_id}", response_model=schemas.ProcessoResponse)
+def atualizar_processo(
+    processo_id: int,
+    dados_atualizados: schemas.ProcessoUpdate,
+    db: Session = Depends(database.get_db)
+):
+    processo_atual = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+    if not processo_atual:
+        raise HTTPException(status_code=404, detail="Processo não encontrado!")
+
+    dados_dict = dados_atualizados.model_dump()
+    for chave, valor in dados_dict.items():
+        setattr(processo_atual, chave, valor)
+
+    db.commit()
+    db.refresh(processo_atual)
+    return processo_atual
+
+@router.delete("/{processo_id}")
+def excluir_processo(
+    processo_id: int,
+    db: Session = Depends(database.get_db)
+):
+    processo_para_excluir = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+    if not processo_para_excluir:
+        raise HTTPException(status_code=404,
+                            detail="Processo não encontrado para exclusão!")
+
+    db.delete(processo_para_excluir)
+    db.commit()
+    return {"detail": f"Processo {processo_id} removido com sucesso!"}
+
+@router.get(
+    "/{processo_id}/prazo-movimentacao",
+    response_model=schemas.ProcessoPrazoMovimentacaoResponse
+)
+def calcular_prazo_movimentacao(
+    processo_id: int,
+    db: Session = Depends(database.get_db)
+):
+    processo = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado!")
+
+    return prazo_service.calcular_prazo_movimentacao(processo)
 
 @router.get(
     "/{processo_id}/prazos", response_model=List[schemas.PrazoResponse]
