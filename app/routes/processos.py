@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List
 import re
+from app.api.deps import get_current_user
+from app.models.usuario import Usuario
 from app import models, schemas, database
 
 router = APIRouter(
@@ -27,9 +30,16 @@ def listar_processos(
     cnj: str | None = None,
     status: str | None = None,
     tribunal: str | None = None,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
 ):
-    query = db.query(models.Processo)
+    # Filtra processos em que o advogado é criador ou responsável
+    query = db.query(models.Processo).filter(
+        or_(
+            models.Processo.responsavel_id == current_user.id,
+            models.Processo.criador_id == current_user.id
+        )
+    )
 
     if cnj:
         cnj_limpo = re.sub(r"\D", "", cnj)

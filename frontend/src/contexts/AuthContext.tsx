@@ -16,7 +16,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode}> = ({ children 
     const [user, setUser] = useState<any | null>(null);
     const [carregando, setCarregando] = useState(true);
 
-    // Provedor irá rodar sempre que o site abrir
+    // Este bloco serve para verificar o token e o usuário salvo
+    // no localStorage quando a página é recarregada ou quando o usuário 
+    // retorna ao site após um período de inatividade
     useEffect(() => {
         const tokenSalvo = localStorage.getItem('token');
         const userSalvo = localStorage.getItem('user')

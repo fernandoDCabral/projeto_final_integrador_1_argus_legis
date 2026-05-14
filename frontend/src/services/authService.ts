@@ -3,11 +3,6 @@ import type {LoginData, AuthResponse } from '../types/auth'
 
 export const login = async (data: LoginData): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/', data);
-
-    if (response.data.access_token) {
-        localStorage.setItem('token', response.data.access_token)
-    }
-
     return response.data;
  };
 

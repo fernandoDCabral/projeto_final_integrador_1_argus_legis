@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import List
 from app import models, schemas, database
 
 router = APIRouter(
@@ -29,3 +30,13 @@ def listar_escritorios_por_id(
         raise HTTPException(
             status_code=404, detail="Escritório não encontrado!")
     return dados_escritorio
+
+@router.get("/", response_model=List[schemas.EscritorioResponse])
+def listar_escritorios(
+    skip: int = 0,
+    limit: int = 100, 
+    db: Session = Depends(database.get_db)
+):
+    escritorios = db.query(models.Escritorio).order_by(
+        models.Escritorio.id.desc()).offset(skip).limit(limit).all()
+    return escritorios

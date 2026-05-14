@@ -9,6 +9,8 @@ class LoginUserResponse(BaseModel):
     email: str
 
 class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
     message: str
     user: LoginUserResponse
     model_config = ConfigDict(from_attributes=True)

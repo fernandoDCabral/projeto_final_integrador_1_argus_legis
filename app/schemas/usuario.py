@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional
-from .escritorio import EscritorioResponse
 
 class UsuarioBase(BaseModel):
     nome: str
@@ -10,7 +9,7 @@ class UsuarioBase(BaseModel):
 
 class UsuarioCreate(UsuarioBase):
     senha: str
-    escritorio_id: int
+    escritorio_id: Optional[int] = None
 
 class UsuarioResponse(UsuarioBase):
     id: int
