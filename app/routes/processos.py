@@ -66,7 +66,7 @@ def atualizar_processo(
     if not processo_atual:
         raise HTTPException(status_code=404, detail="Processo não encontrado!")
 
-    dados_dict = dados_atualizados.model_dump()
+    dados_dict = dados_atualizados.model_dump(exclude_unset=True)
     for chave, valor in dados_dict.items():
         setattr(processo_atual, chave, valor)
 
@@ -81,6 +81,7 @@ def excluir_processo(
 ):
     processo_para_excluir = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
+    
     if not processo_para_excluir:
         raise HTTPException(status_code=404,
                             detail="Processo não encontrado para exclusão!")

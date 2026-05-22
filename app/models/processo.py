@@ -29,7 +29,10 @@ class Processo(Base):
 
     # Relações
     cliente: Mapped["Cliente"] = relationship(back_populates="processos")
-    prazos: Mapped[list["Prazo"]] = relationship(back_populates="processo")
+    prazos: Mapped[list["Prazo"]] = relationship(
+        back_populates="processo", 
+        cascade="all, delete-orphan"
+    )
     responsavel: Mapped["Usuario"] = relationship(
         "Usuario", 
         foreign_keys=[responsavel_id],

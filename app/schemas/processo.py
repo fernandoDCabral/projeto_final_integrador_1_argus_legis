@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict, AfterValidator
+from typing import Optional
 from datetime import datetime
 from typing import List, Annotated
 from .usuario import UsuarioResponse
@@ -21,8 +22,16 @@ class ProcessoCreate(ProcessoBase):
     criador_id: int
     escritorio_id: int
 
-class ProcessoUpdate(ProcessoCreate):
-    pass
+class ProcessoUpdate(BaseModel):
+    cnj: Optional[CNJ] = None
+    titulo: Optional[str] = None
+    tribunal: Optional[str] = None
+    status: Optional[str] = None
+    tipo_processo: Optional[str] = None
+    cliente_id: Optional[int] = None
+    responsavel_id: Optional[int] = None
+    escritorio_id: Optional[int] = None
+
 
 class ProcessoResponse(ProcessoBase):
     id: int

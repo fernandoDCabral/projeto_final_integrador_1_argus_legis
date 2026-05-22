@@ -24,7 +24,8 @@ class Escritorio(Base):
     
     clientes: Mapped[list["Cliente"]] = relationship(
         back_populates="escritorio",
-        cascade="all, delete-orphan")
+        cascade="all, delete-orphan"
+    )
     
     processos: Mapped[list["Processo"]] = relationship(
         back_populates="escritorio",
