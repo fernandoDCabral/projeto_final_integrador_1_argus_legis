@@ -22,8 +22,18 @@ export default function Login() {
       await login({email, password});
 
     } catch (error: any){
-      const mensagemErro = error.response?.data?.detail 
-      setErro(mensagemErro || "Erro ao conectar ao servidor");
+      const detail = error.response?.data?.detail;
+      
+      // Esse bloco lida com 2 tipos duas situações:
+      // 1. quando o erro é do tipo string
+      // 2. quando o erro é do tipo array
+      if(Array.isArray(detail)) {
+        setErro(`Erro de formulário: ${detail[0].loc[1]} ${detail[0].msg}`);
+      } else if (typeof detail === 'string') {
+        setErro(detail);
+      } else {
+        setErro("Erro ao conectar com o servidor.")
+      }
     }
   };
 

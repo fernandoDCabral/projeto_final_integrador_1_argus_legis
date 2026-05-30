@@ -3,19 +3,20 @@ from fastapi import FastAPI
 from app import models, routes
 from app.database import engine
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
 
 # Cria tabelas no banco, se não existirem
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Argus Legis API",
+    title=settings.APP_NAME,
     description="Sistema de gestão jurídica",
     version="0.1.0"
 )
 
 # CORS - permissões de acesso
 origins = [
-    os.getenv("FRONTEND_URL", "http://localhost:5173"),
+    settings.FRONTEND_URL,
     "http://127.0.0.1:5173"
 ]
 
@@ -36,5 +37,4 @@ app.include_router(routes.usuarios_router)
 app.include_router(routes.clientes_router)
 app.include_router(routes.processos_router)
 app.include_router(routes.prazos_router)
-# Rota do Sávio
 app.include_router(routes.autenticacoes_router)

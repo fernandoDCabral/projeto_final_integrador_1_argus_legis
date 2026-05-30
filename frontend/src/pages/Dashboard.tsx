@@ -1,9 +1,28 @@
 // src/pages/Dashboard.tsx
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import api from "../services/api";
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const [processos, setProcessos] = useState<any[]>([]);
+  const [erro, setErro] = useState("");
+
+  useEffect(
+    () => {
+      const buscarProcessos = async () => {
+        try {
+          const response = await api.get('/processos/');
+          setProcessos(response.data)
+        } catch (error) {
+          console.error("Erro ao buscar processos:", error);
+          setErro("Não foi possível carregar os processos.");
+        }
+      };
+      
+      buscarProcessos();
+    }, []
+  );
   
   return (
     <div
@@ -90,6 +109,35 @@ export default function Dashboard() {
             </p>
             <p>Você está logado com sucesso no Argus Legis.</p>
           </div>
+
+        <div
+          style={{
+            backgroundColor: "white",
+            padding: "20px",
+            borderRadius: "8px",
+            border: "1px solid #ddd"
+          }}
+          >
+            <h3> Meus processos (TESTE DE INTEGRAÇÃO JWT)</h3>
+            {erro && <p style={{color: "red"}}>{erro}</p>}
+
+            {processos.length > 0 ? (
+              <pre
+                style={{
+                  backgroundColor: "#333",
+                  color: "#0f0",
+                  padding: "15px",
+                  borderRadius: "5px",
+                  overflowX: "auto"
+                }}
+                >
+                  {JSON.stringify(processos, null, 2)}
+                </pre>
+            ) : (
+              <p>Carregando processos ou nenhum processo encontrado...</p>
+            )}
+          </div>
+          
         </section>
       </main>
     </div>

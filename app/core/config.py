@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60)
     APP_NAME: str = Field(default="Argus Legis")
     DEBUG: bool = Field(default=False)
+    FRONTEND_URL: str = Field(default="http://localhost:5173")
 
     model_config = SettingsConfigDict(
         env_file=env_path,
