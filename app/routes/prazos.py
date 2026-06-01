@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas, database
 from app.utils.autorizacao import verificar_acesso_ao_processo
 from app.api.deps import get_current_user
+from app.service import prazo_service
 
 router = APIRouter(
     prefix="/prazos",
@@ -17,12 +18,7 @@ def criar_prazo(
     current_user: models.Usuario = Depends(get_current_user)
 ):
     verificar_acesso_ao_processo(prazo.processo_id, current_user.id, db)
-
-    novo_prazo = models.Prazo(**prazo.model_dump())
-    db.add(novo_prazo)
-    db.commit()
-    db.refresh(novo_prazo)
-    return novo_prazo
+    return prazo_service.criar_prazo(db, prazo)    
 
 @router.patch("/{prazo_id}", response_model=schemas.PrazoResponse)
 def atualizar_status(
