@@ -18,8 +18,7 @@ class ProcessoBase(BaseModel):
 
 class ProcessoCreate(ProcessoBase):
     cliente_id: int
-    responsavel_id: int
-    criador_id: int
+    responsavel_id: Optional[int] = None
     escritorio_id: int
 
 class ProcessoUpdate(BaseModel):
@@ -37,7 +36,7 @@ class ProcessoResponse(ProcessoBase):
     id: int
     data_cadastro: datetime
     cliente: ClienteResponse
-    responsavel: UsuarioResponse
+    responsavel: Optional[UsuarioResponse] = None
     criador: UsuarioResponse
     prazos: List[PrazoResponse]
     model_config = ConfigDict(from_attributes=True)

@@ -70,7 +70,7 @@ def buscar_processo(
 
     return processo
 
-@router.put("/{processo_id}", response_model=schemas.ProcessoResponse)
+@router.patch("/{processo_id}", response_model=schemas.ProcessoResponse)
 def atualizar_processo(
     processo_id: int,
     dados_atualizados: schemas.ProcessoUpdate,
