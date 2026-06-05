@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas, database
 from app.utils.autorizacao import verificar_acesso_ao_processo
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, VerificadorPerfil
 from app.service import prazo_service
 
 router = APIRouter(
@@ -15,7 +15,7 @@ router = APIRouter(
 def criar_prazo(
     prazo: schemas.PrazoCreate, 
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
 ):
     verificar_acesso_ao_processo(prazo.processo_id, current_user.id, db)
     return prazo_service.criar_prazo(db, prazo)    
@@ -25,7 +25,7 @@ def atualizar_status(
     prazo_id: int, 
     dados_atualizados: schemas.PrazoUpdate,
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
 ):
     
     prazo_atual = db.query(models.Prazo).filter(
@@ -47,7 +47,7 @@ def atualizar_status(
 def excluir_prazo(
     prazo_id: int, 
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
 ):
     prazo_para_excluir = db.query(models.Prazo).filter(
         models.Prazo.id == prazo_id).first()

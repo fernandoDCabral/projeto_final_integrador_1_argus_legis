@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List
 import re
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, VerificadorPerfil
 from app import models, schemas, database
 from app.service import prazo_service
 from app.utils.autorizacao import verificar_acesso_ao_processo
@@ -18,7 +18,7 @@ router = APIRouter(
 def criar_processo(
     processo: schemas.ProcessoCreate,
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
 ):
     dados_processo = processo.model_dump()
     dados_processo["criador_id"] = current_user.id
@@ -39,11 +39,12 @@ def listar_processos(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    # Filtra processos em que o advogado é criador ou responsável
+    # Filtra processos em que o advogado é responsável OU
+    # processos que estão disponíveis (sem responsável)
     query = db.query(models.Processo).filter(
         or_(
             models.Processo.responsavel_id == current_user.id,
-            models.Processo.criador_id == current_user.id
+            models.Processo.responsavel_id.is_(None)
         )
     )
 
@@ -61,8 +62,10 @@ def listar_processos(
 @router.get("/{processo_id}", response_model=schemas.ProcessoResponse)
 def buscar_processo(
     processo_id: int,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
 ):
+    verificar_acesso_ao_processo(processo_id, current_user.id, db)
     processo = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
     if not processo:
@@ -75,7 +78,7 @@ def atualizar_processo(
     processo_id: int,
     dados_atualizados: schemas.ProcessoUpdate,
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
 ):
     processo_atual = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
@@ -96,7 +99,7 @@ def atualizar_processo(
 def excluir_processo(
     processo_id: int,
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
 ):
     processo_para_excluir = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
@@ -118,8 +121,10 @@ def excluir_processo(
 )
 def calcular_prazo_movimentacao(
     processo_id: int,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
 ):
+    verificar_acesso_ao_processo(processo_id, current_user.id, db)
     processo = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
     if not processo:
@@ -133,8 +138,10 @@ def calcular_prazo_movimentacao(
 )
 def listar_prazos_por_processos(
     processo_id: int, 
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
 ):
+    verificar_acesso_ao_processo(processo_id, current_user.id, db)
     return db.query(models.Prazo).filter(
         models.Prazo.processo_id == processo_id).all()
     

@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
+from typing import List
 from app.core.config import settings
 from app.database import get_db
 from app.models.usuario import Usuario
@@ -40,3 +41,19 @@ def get_current_user(
         raise credentials_exception
     
     return user
+
+class VerificadorPerfil:
+    def __init__(self, perfis_permitidos: List[str]):
+        self.perfis_permitidos = perfis_permitidos
+    
+    def __call__(
+            self, 
+            current_user: Usuario = Depends(get_current_user)
+    ) -> Usuario:
+        if current_user.perfil not in self.perfis_permitidos:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Acesso negado. Você não possui autorização para esta ação"
+            )
+        
+        return current_user 
