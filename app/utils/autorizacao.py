@@ -19,7 +19,7 @@ def verificar_acesso_ao_processo(
     if not processo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Processo vinculado não encontrado."
+            detail="Processo não encontrado!"
         )
 
     if processo.responsavel_id is None:
