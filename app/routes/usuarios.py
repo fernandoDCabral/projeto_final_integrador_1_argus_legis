@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List
 from app import models, schemas, database
 from app.api.deps import get_current_user, VerificadorPerfil
@@ -44,6 +45,7 @@ def excluir_usuario(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
 ):
+    # Trava de exclusão para evitar que um usuário exclua a própria conta
     if usuario_id == current_user.id:
         raise HTTPException(
             status_code=400,
@@ -56,6 +58,19 @@ def excluir_usuario(
         raise HTTPException(
             status_code=404,
             detail="Usuário não encontrado para exclusão!"
+        )
+    
+    processo_vinculados = db.query(models.Processo).filter(
+        or_(
+            models.Processo.criador_id == usuario_id,
+            models.Processo.responsavel_id == usuario_id
+        )
+    ).first()
+    if processo_vinculados:
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível excluir este usuário, " \
+            "pois ele possui processos vinculados ao seu perfil"
         )
     
     db.delete(usuario_para_excluir)
