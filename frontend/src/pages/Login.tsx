@@ -1,38 +1,28 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-// Removido o uso de LoginProps, pois irá ser utilizado
-// o contexto useAuth
 export default function Login() {
   const { login } = useAuth();
-  const [isCadastro, setIsCadastro] = useState(false);
-  const [perfil, setPerfil] = useState('Advogado');
-  const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [erro, setErro] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // No futuro, aqui enviaremos para o Python/PostgreSQL [cite: 119]
     setErro(''); // Limpa erros anteriores
 
-    try{
-      // Lembrar que para o cadastro, adicionar a variável nome
-      await login({email, password});
-
-    } catch (error: any){
+    try {
+      await login({ email, password });
+    } catch (error: any) {
       const detail = error.response?.data?.detail;
       
-      // Esse bloco lida com 2 tipos duas situações:
-      // 1. quando o erro é do tipo string
-      // 2. quando o erro é do tipo array
-      if(Array.isArray(detail)) {
+      // Esse bloco lida com situações de erro string ou array vindas do FastAPI
+      if (Array.isArray(detail)) {
         setErro(`Erro de formulário: ${detail[0].loc[1]} ${detail[0].msg}`);
       } else if (typeof detail === 'string') {
         setErro(detail);
       } else {
-        setErro("Erro ao conectar com o servidor.")
+        setErro("Erro ao conectar com o servidor.");
       }
     }
   };
@@ -42,22 +32,9 @@ export default function Login() {
       <div style={cardStyle}>
         <img src="/logo.jpg" alt="Argus Legis" style={logoStyle} />
         
-        <h2 style={titleStyle}>{isCadastro ? 'Cadastro' : 'Acesso Argus Legis'}</h2>
+        <h2 style={titleStyle}>Acesso Argus Legis</h2>
 
         <form onSubmit={handleSubmit} style={formStyle}>
-          {isCadastro && (
-            <div style={rowStyle}>
-              <label style={labelStyle}>Nome:</label>
-              <input 
-              type="text" 
-              style={inputStyle} 
-              required 
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              />
-            </div>
-          )}
-
           <div style={rowStyle}>
             <label style={labelStyle}>E-mail:</label>
             <input 
@@ -79,47 +56,23 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)} 
             />
           </div>
-
-          {isCadastro && (
-            <div style={rowStyle}>
-              <label style={labelStyle}>Tipo:</label>
-              <select 
-                value={perfil} 
-                onChange={(e) => setPerfil(e.target.value)} 
-                style={inputStyle}
-              >
-                <option value="Advogado">Advogado</option>
-                <option value="Administrador">Administrador</option>
-              </select>
-            </div>
-          )}
           
-          {erro &&(
+          {erro && (
             <p style={{color: 'red', fontSize: '13px', marginBottom: '10px'}}>
               {erro}
             </p>
           )}
 
           <button type="submit" style={buttonStyle}>
-            {isCadastro ? 'Cadastrar' : 'ENTRAR'}
+            ENTRAR
           </button>
         </form>
-
-        <p style={toggleTextStyle}>
-          {isCadastro ? 'Já possui uma conta? ' : 'Não tem uma conta? '}
-          <span 
-            onClick={() => setIsCadastro(!isCadastro)} 
-            style={linkStyle}
-          >
-            {isCadastro ? 'Faça Login' : 'Cadastre-se'}
-          </span>
-        </p>
       </div>
     </div>
   );
 }
 
-// --- ESTILOS (Baseados na sua imagem) ---
+// --- ESTILOS ---
 const containerStyle = {
   height: '100vh', width: '100vw', display: 'flex', 
   justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a2a3a'
@@ -148,7 +101,3 @@ const buttonStyle = {
   backgroundColor: '#D4AF37', color: 'white', padding: '10px', border: 'none', 
   borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' as const, marginTop: '10px'
 };
-
-const toggleTextStyle = { marginTop: '15px', fontSize: '14px' };
-
-const linkStyle = { color: 'red', cursor: 'pointer', fontWeight: 'bold' as const };
