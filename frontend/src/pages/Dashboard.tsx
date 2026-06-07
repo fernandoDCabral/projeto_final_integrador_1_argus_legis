@@ -113,6 +113,13 @@ export default function Dashboard() {
         </header>
 
         <section style={{ padding: "30px" }}>
+          <div style={styles.cardInfo}>
+            <h2 style={{ marginTop: 0 }}>Bem-vindo, {user?.nome || user?.email || "Advogado"}!</h2>
+            <p style={{ color: "#666", marginBottom: 0 }}>
+              Perfil ativo: <strong>{user?.perfil || "Desconhecido"}</strong>
+            </p>
+          </div>
+
           {erro && <p style={{ color: "red", fontWeight: "bold" }}>{erro}</p>}
           {carregando && <p>Carregando processos...</p>}
 
@@ -235,5 +242,6 @@ const styles = {
   label: { color: "#666", marginRight: "5px" },
   valor: { fontWeight: "bold", color: "#333" },
   badgeAtivo: { display: "inline-block", backgroundColor: "#e8f5e9", color: "#2e7d32", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const },
-  btnAssumir: { marginTop: "10px", backgroundColor: "#c0392b", color: "white", border: "none", padding: "8px 15px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" }
+  btnAssumir: { marginTop: "10px", backgroundColor: "#c0392b", color: "white", border: "none", padding: "8px 15px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" },
+  cardInfo: { backgroundColor: "white", padding: "20px", borderRadius: "8px", border: "1px solid #ddd", marginBottom: "20px" }
 };

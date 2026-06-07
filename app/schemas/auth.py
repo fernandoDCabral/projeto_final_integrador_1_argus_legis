@@ -7,6 +7,8 @@ class LoginRequest(BaseModel):
 class LoginUserResponse(BaseModel):
     id: int
     email: str
+    nome: str
+    perfil: str
 
 class LoginResponse(BaseModel):
     access_token: str
