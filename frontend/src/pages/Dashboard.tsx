@@ -35,29 +35,55 @@ export default function Dashboard() {
     return data.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   };
 
+  // Função que busca processos onde o advogado é o responsável e
+  // processos que não possuem responsáveis (piscina)
+  const carregarProcessos = async () => {
+    try {
+      const response = await api.get('/processos/');
+      const todosProcessos = response.data;
+
+      const meus = todosProcessos.filter((p: any) => p.responsavel?.id === user?.id);
+      const orfaos = todosProcessos.filter((p: any) => p.responsavel === null);
+
+      setMeusProcessos(meus);
+      setPiscinaProcessos(orfaos);
+    } catch (error) {
+      console.error("Erro ao buscar processos:", error);
+      setErro("Não foi possível carregar os processos.");
+    } finally {
+      setCarregando(false);
+    }
+  };
+
   useEffect(() => {
-    const buscarProcessos = async () => {
-      try {
-        const response = await api.get('/processos/');
-        const todosProcessos = response.data;
-
-        const meus = todosProcessos.filter((p: any) => p.responsavel?.id === user?.id);
-        const orfaos = todosProcessos.filter((p: any) => p.responsavel === null);
-
-        setMeusProcessos(meus);
-        setPiscinaProcessos(orfaos);
-      } catch (error) {
-        console.error("Erro ao buscar processos:", error);
-        setErro("Não foi possível carregar os processos.");
-      } finally {
-        setCarregando(false);
-      }
-    };
-
     if (user?.id) {
-        buscarProcessos();
+        carregarProcessos();
     }
   }, [user]);
+
+  const handleAssumirProcesso = async (processo: any) => {
+    try {
+      // Faz a requisição PATCH enviando apenas o campo `responsavel_id`
+      // para vincular o advogado logado ao processo
+      await api.patch(`/processos/${processo.id}`, {
+        responsavel_id: user?.id
+      });
+
+      // Faz a requisição POST para gerar o prazo inicial
+      await api.post('/prazos/', {
+        processo_id: processo.id,
+        descricao: `Prazo inicial (${processo.tipo_processo})`,
+        data_publicacao: processo.data_cadastro,
+        finalizado: false
+      });
+
+      // Caso dê certo, recarrega a tela para recalcular as colunas e prazos
+      await carregarProcessos();
+    } catch (error) {
+      console.error("Erro ao assumir processo ou criar prazo:", error);
+      alert("Não foi possível assumir este processo. Verifique suas permissões.");
+    }
+  };
 
   return (
     <div style={styles.container}>
@@ -169,7 +195,12 @@ export default function Dashboard() {
                       <h4 style={{ margin: "0 0 10px 0" }}>{processo.cnj}</h4>
                       <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Ação:</strong> {processo.tipo_processo}</p>
                       <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Tribunal:</strong> {processo.tribunal}</p>
-                      <button style={styles.btnAssumir}>Assumir Caso</button>
+                      <button
+                        onClick={() => handleAssumirProcesso(processo)} 
+                        style={styles.btnAssumir}
+                      >
+                        Assumir Caso
+                      </button>
                     </div>
                   ))
                 ) : (

@@ -49,7 +49,7 @@ def criar_prazo(db: Session, prazo_data: PrazoCreate):
     if not processo:
         raise HTTPException(
             status_code=404,
-            detail="Processo não encontrado"
+            detail="Processo não encontrado!"
         )
 
     data_vencimento = calcular_data_vencimento(
