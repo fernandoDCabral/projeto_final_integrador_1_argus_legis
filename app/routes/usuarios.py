@@ -12,17 +12,28 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)]
 )
 
-@router.post("/", response_model=schemas.UsuarioResponse)
+@router.post(
+        "/", 
+        response_model=schemas.UsuarioResponse, 
+        status_code=status.HTTP_201_CREATED
+)
 def criar_usuario(
     usuario: schemas.UsuarioCreate, 
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
 ):
-    
+    # Verifica se o e-mail já esta cadastrado no sistema
+    if db.query(models.Usuario).filter(models.Usuario.email == usuario.email).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="E-mail já cadastrado."
+        ) 
+     
     dados = usuario.model_dump()
     dados["senha"] = gerar_hash_senha(dados.pop("senha"))
-    novo_usuario = models.Usuario(**dados)
+    dados["escritorio_id"] = current_user.escritorio_id
     
+    novo_usuario = models.Usuario(**dados)
     db.add(novo_usuario)
     db.commit()
     db.refresh(novo_usuario)
