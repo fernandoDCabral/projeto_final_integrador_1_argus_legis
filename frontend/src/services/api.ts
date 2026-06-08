@@ -29,7 +29,10 @@ api.interceptors.response.use(
         return response;
     },
     (error) => {
-        if(error.response && error.response.status === 401) {
+        const urlRequisicao = error.config?.url || "";
+        const isRotaDeLogin = urlRequisicao.includes('/auth/');
+
+        if(error.response && error.response.status === 401 && !isRotaDeLogin) {
             console.error("Sessão expirada ou não autorizada. Deslogando...");
 
             localStorage.removeItem('token');
