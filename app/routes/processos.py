@@ -21,6 +21,8 @@ def criar_processo(
     current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
 ):
     dados_processo = processo.model_dump()
+
+    dados_processo["escritorio_id"] = current_user.escritorio_id
     dados_processo["criador_id"] = current_user.id
 
     novo_processo = models.Processo(**dados_processo)
@@ -39,15 +41,23 @@ def listar_processos(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    # Filtra processos em que o advogado é responsável OU
-    # processos que estão disponíveis (sem responsável)
+    # Filtra todos os processos apenas do escritório do usuário logado
     query = db.query(models.Processo).filter(
-        or_(
-            models.Processo.responsavel_id == current_user.id,
-            models.Processo.responsavel_id.is_(None)
-        )
+        models.Processo.escritorio_id == current_user.escritorio_id
     )
 
+    # Filtra processos para advogados, mostrando apenas os processos
+    # que são responsáveis ou que não possuem responsável (piscina de processos)
+    if current_user.perfil == "ADVOGADO":
+        query = query.filter(
+            or_(
+                models.Processo.responsavel_id == current_user.id,
+                models.Processo.responsavel_id.is_(None)
+            )
+        )
+
+    # OBS: se o perfil do usuário for `ADMIN`, ele verá todos os processos
+    # do escritório, na piscina ou já assumidos por advogados
     if cnj:
         cnj_limpo = re.sub(r"\D", "", cnj)
         query = query.filter(models.Processo.cnj.contains(cnj_limpo))

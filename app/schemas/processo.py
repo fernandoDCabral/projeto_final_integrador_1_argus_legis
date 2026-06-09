@@ -19,7 +19,7 @@ class ProcessoBase(BaseModel):
 class ProcessoCreate(ProcessoBase):
     cliente_id: int
     responsavel_id: Optional[int] = None
-    escritorio_id: int
+    escritorio_id: Optional[int] = None
 
 class ProcessoUpdate(BaseModel):
     cnj: Optional[CNJ] = None
