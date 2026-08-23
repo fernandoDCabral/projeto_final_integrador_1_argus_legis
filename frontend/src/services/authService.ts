@@ -1,5 +1,10 @@
 import api from './api'
-import type {LoginData, AuthResponse } from '../types/auth'
+import type {
+    LoginData,
+    AuthResponse,
+    RegistroEscritorioData,
+    RegistroEscritorioResponse
+} from '../types/auth'
 
 export const login = async (data: LoginData): Promise<AuthResponse> => {
     const params = new URLSearchParams();
@@ -18,6 +23,19 @@ export const login = async (data: LoginData): Promise<AuthResponse> => {
     
     return response.data;
  };
+
+// Cria o escritório e o seu primeiro administrador. É a única rota que
+// devolve um token sem exigir login anterior.
+export const registrarEscritorio = async (
+    data: RegistroEscritorioData
+): Promise<RegistroEscritorioResponse> => {
+    const response = await api.post<RegistroEscritorioResponse>(
+        '/registro/escritorio',
+        data
+    );
+
+    return response.data;
+};
 
 export const logout = () => {
     localStorage.removeItem('token');
