@@ -3,9 +3,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
   onIrParaCadastro: () => void;
+  onIrParaEsqueciSenha: () => void;
 }
 
-export default function Login({ onIrParaCadastro }: Props) {
+export default function Login({ onIrParaCadastro, onIrParaEsqueciSenha }: Props) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -71,6 +72,12 @@ export default function Login({ onIrParaCadastro }: Props) {
             ENTRAR
           </button>
         </form>
+
+        <p style={{ ...rodapeStyle, marginTop: '16px' }}>
+          <button type="button" onClick={onIrParaEsqueciSenha} style={linkStyle}>
+            Esqueci minha senha
+          </button>
+        </p>
 
         <p style={rodapeStyle}>
           Ainda não tem escritório cadastrado?{' '}

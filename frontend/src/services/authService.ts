@@ -37,6 +37,33 @@ export const registrarEscritorio = async (
     return response.data;
 };
 
+// --- RECUPERAÇÃO DE SENHA ---
+
+// A resposta é sempre a mesma, exista ou não o e-mail cadastrado
+export const solicitarRecuperacao = async (email: string): Promise<string> => {
+    const response = await api.post<{ message: string }>(
+        '/auth/esqueci-senha', { email }
+    );
+    return response.data.message;
+};
+
+export const validarTokenRecuperacao = async (token: string) => {
+    const response = await api.get<{ valido: boolean; nome: string; email: string }>(
+        `/auth/redefinir-senha/${token}`
+    );
+    return response.data;
+};
+
+export const redefinirSenha = async (
+    token: string,
+    nova_senha: string
+): Promise<string> => {
+    const response = await api.post<{ message: string }>(
+        '/auth/redefinir-senha', { token, nova_senha }
+    );
+    return response.data.message;
+};
+
 export const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user')
