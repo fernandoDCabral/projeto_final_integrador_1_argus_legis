@@ -1,22 +1,49 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../services/api";
+import type { Cliente, TipoPessoa } from "../types/cliente";
+import {
+  formatarCpf,
+  formatarCnpj,
+  formatarTelefone,
+  somenteDigitos,
+  documentoDoCliente,
+  rotuloTipoPessoa,
+} from "../utils/formatos";
+
+type AbaAdmin = "cadastro" | "clientes" | "processos";
+type Aviso = { tipo: "sucesso" | "erro"; texto: string } | null;
+
+const FORM_CLIENTE_VAZIO = {
+  nome: "",
+  tipo_pessoa: "FISICA" as TipoPessoa,
+  documento: "",
+  email: "",
+  telefone: "",
+  endereco: "",
+};
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  
+
   // Estados para o Advogado
   const [meusProcessos, setMeusProcessos] = useState<any[]>([]);
   const [piscinaProcessos, setPiscinaProcessos] = useState<any[]>([]);
-  
+
   // Estados para o Admin
-  const [abaAdmin, setAbaAdmin] = useState<"cadastro" | "processos">("cadastro");
+  const [abaAdmin, setAbaAdmin] = useState<AbaAdmin>("cadastro");
   const [advogados, setAdvogados] = useState<any[]>([]);
   const [processosAdmin, setProcessosAdmin] = useState<any[]>([]);
-  
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+
   // Modais do Admin
   const [modalAdvogadoAberto, setModalAdvogadoAberto] = useState(false);
   const [modalProcessoAberto, setModalProcessoAberto] = useState(false);
+  const [modalClienteAberto, setModalClienteAberto] = useState(false);
+
+  // Confirmação de exclusão feita na própria linha da tabela, para não
+  // depender de window.confirm
+  const [clienteParaExcluir, setClienteParaExcluir] = useState<number | null>(null);
 
   // Formulários do Admin
   const [formUsuario, setFormUsuario] = useState({
@@ -25,10 +52,24 @@ export default function Dashboard() {
   const [formProcesso, setFormProcesso] = useState({
     cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: ""
   });
+  const [formCliente, setFormCliente] = useState(FORM_CLIENTE_VAZIO);
 
   // Estados Globais
   const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState<Aviso>(null);
   const [carregando, setCarregando] = useState(true);
+
+  // Extrai a mensagem de erro do FastAPI, que ora vem como string (HTTPException)
+  // ora como lista de problemas de validação (Pydantic)
+  const mensagemDeErro = (error: any, padrao: string) => {
+    const detail = error?.response?.data?.detail;
+    if (Array.isArray(detail)) {
+      const campo = detail[0]?.loc?.[detail[0].loc.length - 1];
+      return `${campo}: ${detail[0]?.msg}`;
+    }
+    if (typeof detail === "string") return detail;
+    return padrao;
+  };
 
   // --- FUNÇÕES DE CARREGAMENTO DE DADOS ---
 
@@ -36,14 +77,16 @@ export default function Dashboard() {
     setCarregando(true);
     try {
       if (user?.perfil === "ADMIN") {
-        // ADMIN busca tanto a lista de usuários quanto a de processos do escritório
-        const [resUsuarios, resProcessos] = await Promise.all([
+        // ADMIN busca a equipe, os processos e a carteira de clientes
+        const [resUsuarios, resProcessos, resClientes] = await Promise.all([
           api.get('/usuarios/'),
-          api.get('/processos/')
+          api.get('/processos/'),
+          api.get('/clientes/')
         ]);
-        
+
         setAdvogados(resUsuarios.data.filter((u: any) => u.perfil === "ADVOGADO"));
         setProcessosAdmin(resProcessos.data);
+        setClientes(resClientes.data);
       } else {
         // ADVOGADO busca apenas a sua visão restrita de processos
         const response = await api.get('/processos/');
@@ -72,12 +115,12 @@ export default function Dashboard() {
       await api.post('/prazos/', {
         processo_id: processo.id,
         descricao: `Prazo Inicial (${processo.tipo_processo})`,
-        data_publicacao: processo.data_cadastro, 
+        data_publicacao: processo.data_cadastro,
         finalizado: false
       });
       await carregarDados();
     } catch (error) {
-      alert("Não foi possível assumir este processo.");
+      setAviso({ tipo: "erro", texto: "Não foi possível assumir este processo." });
     }
   };
 
@@ -92,14 +135,68 @@ export default function Dashboard() {
         oab: formUsuario.oab,
         perfil: "ADVOGADO"
       });
-      
-      alert("Advogado cadastrado com sucesso!");
+
+      setAviso({ tipo: "sucesso", texto: "Advogado cadastrado com sucesso!" });
       setModalAdvogadoAberto(false);
       setFormUsuario({ nome: "", email: "", senha: "", oab: "" });
       await carregarDados();
     } catch (error) {
-      console.error(error);
-      alert("Erro ao cadastrar advogado. Verifique se o e-mail já existe.");
+      setAviso({
+        tipo: "erro",
+        texto: mensagemDeErro(error, "Erro ao cadastrar advogado.")
+      });
+    }
+  };
+
+  const handleCadastrarCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ehFisica = formCliente.tipo_pessoa === "FISICA";
+    const documento = somenteDigitos(formCliente.documento);
+
+    if (ehFisica && documento.length !== 11) {
+      setAviso({ tipo: "erro", texto: "O CPF deve ter 11 dígitos." });
+      return;
+    }
+    if (!ehFisica && documento.length !== 14) {
+      setAviso({ tipo: "erro", texto: "O CNPJ deve ter 14 dígitos." });
+      return;
+    }
+
+    try {
+      const { data } = await api.post('/clientes/', {
+        nome: formCliente.nome,
+        tipo_pessoa: formCliente.tipo_pessoa,
+        cpf: ehFisica ? documento : null,
+        cnpj: ehFisica ? null : documento,
+        email: formCliente.email,
+        telefone: formCliente.telefone,
+        endereco: formCliente.endereco,
+      });
+
+      setAviso({ tipo: "sucesso", texto: `Cliente "${data.nome}" cadastrado!` });
+      setModalClienteAberto(false);
+      setFormCliente(FORM_CLIENTE_VAZIO);
+      await carregarDados();
+    } catch (error) {
+      setAviso({
+        tipo: "erro",
+        texto: mensagemDeErro(error, "Erro ao cadastrar cliente.")
+      });
+    }
+  };
+
+  const handleExcluirCliente = async (clienteId: number) => {
+    try {
+      await api.delete(`/clientes/${clienteId}`);
+      setAviso({ tipo: "sucesso", texto: "Cliente removido." });
+      setClienteParaExcluir(null);
+      await carregarDados();
+    } catch (error) {
+      setClienteParaExcluir(null);
+      setAviso({
+        tipo: "erro",
+        texto: mensagemDeErro(error, "Erro ao excluir cliente.")
+      });
     }
   };
 
@@ -107,33 +204,38 @@ export default function Dashboard() {
     e.preventDefault();
     try {
       await api.post('/processos/', {
-        cnj: formProcesso.cnj,
+        cnj: somenteDigitos(formProcesso.cnj),
         titulo: formProcesso.titulo,
         tribunal: formProcesso.tribunal,
         tipo_processo: formProcesso.tipo_processo,
-        cliente_id: parseInt(formProcesso.cliente_id) // Conversão para int exigida pelo Pydantic
+        cliente_id: parseInt(formProcesso.cliente_id)
       });
 
-      alert("Processo cadastrado com sucesso e enviado para a piscina!");
+      setAviso({
+        tipo: "sucesso",
+        texto: "Processo cadastrado e enviado para a piscina!"
+      });
       setModalProcessoAberto(false);
       setFormProcesso({ cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: "" });
       await carregarDados();
     } catch (error) {
-      console.error(error);
-      alert("Erro ao cadastrar processo. Verifique os campos e o ID do cliente.");
+      setAviso({
+        tipo: "erro",
+        texto: mensagemDeErro(error, "Erro ao cadastrar processo.")
+      });
     }
   };
 
   // --- UTILS DE DATA E FORMATOS ---
   const analisarPrazo = (dataVencimento?: string) => {
-      if (!dataVencimento) return { cor: "#95a5a6", texto: "Sem prazo", dias: null }; 
-      const hoje = new Date(); hoje.setHours(0, 0, 0, 0); 
+      if (!dataVencimento) return { cor: "#95a5a6", texto: "Sem prazo", dias: null };
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
       const vencimento = new Date(dataVencimento); vencimento.setHours(0, 0, 0, 0);
       const diffTime = vencimento.getTime() - hoje.getTime();
       const diffDias = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDias < 0) return { cor: "#c0392b", texto: "Vencido", dias: diffDias }; 
-      if (diffDias <= 3) return { cor: "#f39c12", texto: `Vence em ${diffDias} dias`, dias: diffDias }; 
-      return { cor: "#27ae60", texto: `Vence em ${diffDias} dias`, dias: diffDias }; 
+      if (diffDias < 0) return { cor: "#c0392b", texto: "Vencido", dias: diffDias };
+      if (diffDias <= 3) return { cor: "#f39c12", texto: `Vence em ${diffDias} dias`, dias: diffDias };
+      return { cor: "#27ae60", texto: `Vence em ${diffDias} dias`, dias: diffDias };
   };
 
   const formatarData = (dataStr: string) => {
@@ -141,96 +243,184 @@ export default function Dashboard() {
       return new Date(dataStr).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   };
 
-
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
+
+  const renderAbaEquipe = () => (
+    <div>
+      <div style={styles.cabecalhoAba}>
+        <h3 style={styles.tituloAba}>Equipe Jurídica (Advogados)</h3>
+        <button onClick={() => setModalAdvogadoAberto(true)} style={styles.btnAcaoBase}>
+          ➕ Novo Advogado
+        </button>
+      </div>
+      <div style={styles.cardInfo}>
+        <table style={styles.tabela}>
+          <thead>
+            <tr style={styles.tabelaCabecalho}>
+              <th style={styles.th}>Nome</th>
+              <th style={styles.th}>E-mail</th>
+              <th style={styles.th}>OAB</th>
+            </tr>
+          </thead>
+          <tbody>
+            {advogados.length > 0 ? advogados.map(adv => (
+              <tr key={adv.id} style={styles.tabelaLinha}>
+                <td style={styles.td}>{adv.nome}</td>
+                <td style={styles.td}>{adv.email}</td>
+                <td style={styles.td}>{adv.oab || "N/A"}</td>
+              </tr>
+            )) : (
+              <tr><td colSpan={3} style={styles.tdVazio}>Nenhum advogado cadastrado.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAbaClientes = () => (
+    <div>
+      <div style={styles.cabecalhoAba}>
+        <h3 style={styles.tituloAba}>Carteira de Clientes</h3>
+        <button onClick={() => setModalClienteAberto(true)} style={styles.btnAcaoBase}>
+          ➕ Novo Cliente
+        </button>
+      </div>
+      <div style={styles.cardInfo}>
+        <table style={styles.tabela}>
+          <thead>
+            <tr style={styles.tabelaCabecalho}>
+              <th style={styles.th}>Nome</th>
+              <th style={styles.th}>Documento</th>
+              <th style={styles.th}>Contato</th>
+              <th style={styles.th}>Processos</th>
+              <th style={{ ...styles.th, textAlign: "right" }}>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clientes.length > 0 ? clientes.map(cliente => {
+              const qtdProcessos = processosAdmin.filter(
+                (p: any) => p.cliente?.id === cliente.id).length;
+              const confirmando = clienteParaExcluir === cliente.id;
+
+              return (
+                <tr key={cliente.id} style={styles.tabelaLinha}>
+                  <td style={styles.td}>
+                    <div style={{ fontWeight: "bold" }}>{cliente.nome}</div>
+                    <small style={styles.textoSecundario}>
+                      {rotuloTipoPessoa(cliente.tipo_pessoa)}
+                    </small>
+                  </td>
+                  <td style={styles.td}>{documentoDoCliente(cliente)}</td>
+                  <td style={styles.td}>
+                    <div>{cliente.email}</div>
+                    <small style={styles.textoSecundario}>
+                      {formatarTelefone(cliente.telefone)}
+                    </small>
+                  </td>
+                  <td style={styles.td}>{qtdProcessos}</td>
+                  <td style={{ ...styles.td, textAlign: "right" }}>
+                    {confirmando ? (
+                      <span style={{ display: "inline-flex", gap: "6px" }}>
+                        <button
+                          onClick={() => handleExcluirCliente(cliente.id)}
+                          style={styles.btnConfirmarExclusao}
+                        >
+                          Confirmar
+                        </button>
+                        <button
+                          onClick={() => setClienteParaExcluir(null)}
+                          style={styles.btnMiniNeutro}
+                        >
+                          Cancelar
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setClienteParaExcluir(cliente.id)}
+                        style={styles.btnMiniNeutro}
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            }) : (
+              <tr>
+                <td colSpan={5} style={styles.tdVazio}>
+                  Nenhum cliente cadastrado. Cadastre um cliente antes de abrir
+                  um processo.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAbaProcessos = () => (
+    <div>
+      <div style={styles.cabecalhoAba}>
+        <h3 style={styles.tituloAba}>Todos os Processos do Escritório</h3>
+        <button onClick={() => setModalProcessoAberto(true)} style={styles.btnAcaoBase}>
+          ➕ Novo Processo
+        </button>
+      </div>
+      <div style={styles.cardInfo}>
+        <table style={styles.tabela}>
+          <thead>
+            <tr style={styles.tabelaCabecalho}>
+              <th style={styles.th}>CNJ</th>
+              <th style={styles.th}>Título / Cliente</th>
+              <th style={styles.th}>Tribunal / Tipo</th>
+              <th style={styles.th}>Responsável / Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {processosAdmin.length > 0 ? processosAdmin.map(proc => (
+              <tr key={proc.id} style={styles.tabelaLinha}>
+                <td style={{ ...styles.td, fontWeight: "bold" }}>{proc.cnj}</td>
+                <td style={styles.td}>
+                  <div>{proc.titulo}</div>
+                  <small style={styles.textoSecundario}>
+                    Cliente: {proc.cliente?.nome || "—"}
+                  </small>
+                </td>
+                <td style={styles.td}>
+                  <div>{proc.tribunal}</div>
+                  <small style={styles.textoSecundario}>{proc.tipo_processo}</small>
+                </td>
+                <td style={styles.td}>
+                  {proc.responsavel ? (
+                    <span style={styles.badgeAtivo}>✅ {proc.responsavel.nome}</span>
+                  ) : (
+                    <span style={styles.badgePiscina}>⚠️ Aguardando Adoção</span>
+                  )}
+                </td>
+              </tr>
+            )) : (
+              <tr><td colSpan={4} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   const renderPainelAdmin = () => (
     <div>
-      {/* ABAS INTERNAS DO ADMIN */}
-      {abaAdmin === "cadastro" ? (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h3 style={{ margin: 0, color: "#1a2a3a" }}>Equipe Jurídica (Advogados)</h3>
-            <button onClick={() => setModalAdvogadoAberto(true)} style={styles.btnAcaoBase}>
-              ➕ Novo Advogado
-            </button>
-          </div>
-          <div style={styles.cardInfo}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px" }}>Nome</th>
-                  <th style={{ padding: "12px" }}>E-mail</th>
-                  <th style={{ padding: "12px" }}>OAB</th>
-                </tr>
-              </thead>
-              <tbody>
-                {advogados.length > 0 ? advogados.map(adv => (
-                  <tr key={adv.id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "12px" }}>{adv.nome}</td>
-                    <td style={{ padding: "12px" }}>{adv.email}</td>
-                    <td style={{ padding: "12px" }}>{adv.oab || "N/A"}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={3} style={{ padding: "12px", textAlign: "center", color: "#666" }}>Nenhum advogado cadastrado.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h3 style={{ margin: 0, color: "#1a2a3a" }}>Todos os Processos do Escritório</h3>
-            <button onClick={() => setModalProcessoAberto(true)} style={styles.btnAcaoBase}>
-              ➕ Novo Processo
-            </button>
-          </div>
-          <div style={styles.cardInfo}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px" }}>CNJ</th>
-                  <th style={{ padding: "12px" }}>Título / Cliente</th>
-                  <th style={{ padding: "12px" }}>Tribunal / Tipo</th>
-                  <th style={{ padding: "12px" }}>Responsável / Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {processosAdmin.length > 0 ? processosAdmin.map(proc => (
-                  <tr key={proc.id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "12px", fontWeight: "bold" }}>{proc.cnj}</td>
-                    <td style={{ padding: "12px" }}>
-                      <div>{proc.titulo}</div>
-                      <small style={{ color: "#777" }}>Cliente: {proc.cliente?.nome || `ID ${proc.cliente_id}`}</small>
-                    </td>
-                    <td style={{ padding: "12px" }}>
-                      <div>{proc.tribunal}</div>
-                      <small style={{ color: "#777" }}>{proc.tipo_processo}</small>
-                    </td>
-                    <td style={{ padding: "12px" }}>
-                      {proc.responsavel ? (
-                        <span style={styles.badgeAtivo}>✅ {proc.responsavel.nome}</span>
-                      ) : (
-                        <span style={styles.badgePiscina}>⚠️ Aguardando Adoção</span>
-                      )}
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={4} style={{ padding: "12px", textAlign: "center", color: "#666" }}>Nenhum processo cadastrado neste escritório.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {abaAdmin === "cadastro" && renderAbaEquipe()}
+      {abaAdmin === "clientes" && renderAbaClientes()}
+      {abaAdmin === "processos" && renderAbaProcessos()}
 
       {/* MODAL 1: CADASTRO DE ADVOGADO */}
       {modalAdvogadoAberto && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
-            <h3 style={{ marginTop: 0, borderBottom: "2px solid #D4AF37", paddingBottom: "10px" }}>Cadastrar Advogado</h3>
-            <form onSubmit={handleCadastrarAdvogado} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            <h3 style={styles.modalTituloDourado}>Cadastrar Advogado</h3>
+            <form onSubmit={handleCadastrarAdvogado} style={styles.form}>
               <div>
                 <label style={styles.label}>Nome Completo</label>
                 <input required style={styles.input} type="text" value={formUsuario.nome} onChange={e => setFormUsuario({...formUsuario, nome: e.target.value})} />
@@ -247,13 +437,13 @@ export default function Dashboard() {
                 <label style={styles.label}>Número da OAB</label>
                 <input required style={styles.input} type="text" value={formUsuario.oab} onChange={e => setFormUsuario({...formUsuario, oab: e.target.value})} />
               </div>
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-                <button 
-                  type="button" 
+              <div style={styles.linhaBotoes}>
+                <button
+                  type="button"
                   onClick={() => {
                     setModalAdvogadoAberto(false);
                     setFormUsuario({ nome: "", email: "", senha: "", oab: "" });
-                  }} 
+                  }}
                   style={styles.btnCancelar}
                 >
                   Cancelar
@@ -265,12 +455,112 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL 2: CADASTRO DE PROCESSO */}
+      {/* MODAL 2: CADASTRO DE CLIENTE */}
+      {modalClienteAberto && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h3 style={styles.modalTituloAzul}>Cadastrar Cliente</h3>
+            <form onSubmit={handleCadastrarCliente} style={styles.form}>
+              <div>
+                <label style={styles.label}>Tipo de Pessoa</label>
+                <select
+                  required
+                  style={styles.input}
+                  value={formCliente.tipo_pessoa}
+                  onChange={e => setFormCliente({
+                    ...formCliente,
+                    tipo_pessoa: e.target.value as TipoPessoa,
+                    documento: ""
+                  })}
+                >
+                  <option value="FISICA">Pessoa física</option>
+                  <option value="JURIDICA">Pessoa jurídica</option>
+                </select>
+              </div>
+              <div>
+                <label style={styles.label}>
+                  {formCliente.tipo_pessoa === "FISICA" ? "Nome Completo" : "Razão Social"}
+                </label>
+                <input required style={styles.input} type="text" value={formCliente.nome} onChange={e => setFormCliente({...formCliente, nome: e.target.value})} />
+              </div>
+              <div>
+                <label style={styles.label}>
+                  {formCliente.tipo_pessoa === "FISICA" ? "CPF" : "CNPJ"}
+                </label>
+                <input
+                  required
+                  style={styles.input}
+                  type="text"
+                  placeholder={formCliente.tipo_pessoa === "FISICA"
+                    ? "000.000.000-00" : "00.000.000/0000-00"}
+                  value={formCliente.documento}
+                  onChange={e => setFormCliente({
+                    ...formCliente,
+                    documento: formCliente.tipo_pessoa === "FISICA"
+                      ? formatarCpf(e.target.value)
+                      : formatarCnpj(e.target.value)
+                  })}
+                />
+              </div>
+              <div>
+                <label style={styles.label}>E-mail</label>
+                <input required style={styles.input} type="email" value={formCliente.email} onChange={e => setFormCliente({...formCliente, email: e.target.value})} />
+              </div>
+              <div>
+                <label style={styles.label}>Telefone</label>
+                <input required style={styles.input} type="text" placeholder="(00) 00000-0000" value={formCliente.telefone} onChange={e => setFormCliente({...formCliente, telefone: formatarTelefone(e.target.value)})} />
+              </div>
+              <div>
+                <label style={styles.label}>Endereço</label>
+                <input required style={styles.input} type="text" placeholder="Rua, nº, bairro, cidade/UF" value={formCliente.endereco} onChange={e => setFormCliente({...formCliente, endereco: e.target.value})} />
+              </div>
+              <div style={styles.linhaBotoes}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalClienteAberto(false);
+                    setFormCliente(FORM_CLIENTE_VAZIO);
+                  }}
+                  style={styles.btnCancelar}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" style={styles.btnSalvar}>Salvar Cliente</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: CADASTRO DE PROCESSO */}
       {modalProcessoAberto && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
-            <h3 style={{ marginTop: 0, borderBottom: "2px solid #c0392b", paddingBottom: "10px" }}>Cadastrar Novo Processo</h3>
-            <form onSubmit={handleCadastrarProcesso} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            <h3 style={styles.modalTituloVermelho}>Cadastrar Novo Processo</h3>
+            <form onSubmit={handleCadastrarProcesso} style={styles.form}>
+              <div>
+                <label style={styles.label}>Cliente</label>
+                {clientes.length > 0 ? (
+                  <select
+                    required
+                    style={styles.input}
+                    value={formProcesso.cliente_id}
+                    onChange={e => setFormProcesso({...formProcesso, cliente_id: e.target.value})}
+                  >
+                    <option value="">Selecione o cliente...</option>
+                    {clientes.map(cliente => (
+                      <option key={cliente.id} value={cliente.id}>
+                        {cliente.nome} — {documentoDoCliente(cliente)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={styles.avisoInline}>
+                    Nenhum cliente cadastrado ainda. Cadastre o cliente na aba
+                    <strong> Clientes </strong> antes de abrir o processo.
+                  </div>
+                )}
+              </div>
               <div>
                 <label style={styles.label}>Número CNJ</label>
                 <input required placeholder="Apenas números ou formatado" style={styles.input} type="text" value={formProcesso.cnj} onChange={e => setFormProcesso({...formProcesso, cnj: e.target.value})} />
@@ -293,22 +583,28 @@ export default function Dashboard() {
                   <option value="Criminal">Criminal</option>
                 </select>
               </div>
-              <div>
-                <label style={styles.label}>ID do Cliente (Banco de Dados)</label>
-                <input required placeholder="Ex: 1" style={styles.input} type="number" value={formProcesso.cliente_id} onChange={e => setFormProcesso({...formProcesso, cliente_id: e.target.value})} />
-              </div>
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-                <button 
-                  type="button" 
+              <div style={styles.linhaBotoes}>
+                <button
+                  type="button"
                   onClick={() => {
                     setModalProcessoAberto(false);
                     setFormProcesso({ cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: "" });
-                  }} 
+                  }}
                   style={styles.btnCancelar}
                 >
                   Cancelar
                 </button>
-                <button type="submit" style={{ ...styles.btnSalvar, backgroundColor: "#c0392b" }}>Cadastrar Processo</button>
+                <button
+                  type="submit"
+                  style={{
+                    ...styles.btnSalvar,
+                    backgroundColor: clientes.length > 0 ? "#c0392b" : "#bdc3c7",
+                    cursor: clientes.length > 0 ? "pointer" : "not-allowed"
+                  }}
+                  disabled={clientes.length === 0}
+                >
+                  Cadastrar Processo
+                </button>
               </div>
             </form>
           </div>
@@ -333,9 +629,9 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div style={styles.gridInfo}>
+                  <div><span style={styles.label}>Cliente:</span><span style={styles.valor}>{processo.cliente?.nome || "—"}</span></div>
                   <div><span style={styles.label}>Tribunal:</span><span style={styles.valor}>{processo.tribunal}</span></div>
                   <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{processo.tipo_processo}</span></div>
-                  <div><span style={styles.label}>Início:</span><span style={styles.valor}>{formatarData(processo.data_cadastro)}</span></div>
                   <div><span style={styles.label}>Vencimento:</span><span style={styles.valor}>{dataVencimentoReal ? formatarData(dataVencimentoReal) : "Sem prazo"}</span></div>
                 </div>
                 <span style={styles.badgeAtivo}>{processo.status}</span>
@@ -350,6 +646,7 @@ export default function Dashboard() {
           <div key={processo.id} style={styles.processCardOrphan}>
             <h4 style={{ margin: "0 0 10px 0" }}>{processo.cnj}</h4>
             <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Título:</strong> {processo.titulo}</p>
+            <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Cliente:</strong> {processo.cliente?.nome || "—"}</p>
             <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Ação:</strong> {processo.tipo_processo}</p>
             <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Tribunal:</strong> {processo.tribunal}</p>
             <button onClick={() => handleAssumirProcesso(processo)} style={styles.btnAssumir}>Assumir Caso</button>
@@ -372,7 +669,10 @@ export default function Dashboard() {
             {user?.perfil === "ADMIN" ? (
               <>
                 <li onClick={() => setAbaAdmin("cadastro")} style={abaAdmin === "cadastro" ? styles.menuItemAtivo : styles.menuItemInativo}>
-                  📝 Cadastro
+                  📝 Equipe
+                </li>
+                <li onClick={() => setAbaAdmin("clientes")} style={abaAdmin === "clientes" ? styles.menuItemAtivo : styles.menuItemInativo}>
+                  👤 Clientes
                 </li>
                 <li onClick={() => setAbaAdmin("processos")} style={abaAdmin === "processos" ? styles.menuItemAtivo : styles.menuItemInativo}>
                   📂 Processos
@@ -400,8 +700,15 @@ export default function Dashboard() {
             </p>
           </div>
 
+          {aviso && (
+            <div style={aviso.tipo === "sucesso" ? styles.avisoSucesso : styles.avisoErro}>
+              <span>{aviso.texto}</span>
+              <button onClick={() => setAviso(null)} style={styles.btnFecharAviso}>✕</button>
+            </div>
+          )}
+
           {erro && <p style={{ color: "red", fontWeight: "bold" }}>{erro}</p>}
-          
+
           {carregando ? (
             <p>Carregando painel...</p>
           ) : (
@@ -438,9 +745,29 @@ const styles = {
   badgePiscina: { display: "inline-block", backgroundColor: "#fff5f5", color: "#c0392b", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #ffdce0" },
   btnAssumir: { marginTop: "10px", backgroundColor: "#c0392b", color: "white", border: "none", padding: "8px 15px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" },
   btnAcaoBase: { backgroundColor: "#1a2a3a", color: "white", border: "none", padding: "10px 20px", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" as const },
-  modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 },
-  modalContent: { backgroundColor: "white", padding: "30px", borderRadius: "8px", width: "400px", boxShadow: "0 4px 15px rgba(0,0,0,0.2)" },
+  modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, padding: "20px" },
+  modalContent: { backgroundColor: "white", padding: "30px", borderRadius: "8px", width: "420px", maxWidth: "100%", maxHeight: "90vh", overflowY: "auto" as const, boxShadow: "0 4px 15px rgba(0,0,0,0.2)" },
+  modalTituloDourado: { marginTop: 0, borderBottom: "2px solid #D4AF37", paddingBottom: "10px" },
+  modalTituloAzul: { marginTop: 0, borderBottom: "2px solid #1a2a3a", paddingBottom: "10px" },
+  modalTituloVermelho: { marginTop: 0, borderBottom: "2px solid #c0392b", paddingBottom: "10px" },
+  form: { display: "flex", flexDirection: "column" as const, gap: "15px" },
+  linhaBotoes: { display: "flex", gap: "10px", marginTop: "10px" },
   input: { width: "100%", padding: "10px", border: "1px solid #ccc", borderRadius: "4px", boxSizing: "border-box" as const },
   btnCancelar: { flex: 1, padding: "10px", backgroundColor: "#ecf0f1", color: "#333", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const },
-  btnSalvar: { flex: 1, padding: "10px", backgroundColor: "#27ae60", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const }
+  btnSalvar: { flex: 1, padding: "10px", backgroundColor: "#27ae60", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const },
+  cabecalhoAba: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
+  tituloAba: { margin: 0, color: "#1a2a3a" },
+  tabela: { width: "100%", borderCollapse: "collapse" as const, textAlign: "left" as const },
+  tabelaCabecalho: { borderBottom: "2px solid #ddd" },
+  tabelaLinha: { borderBottom: "1px solid #eee" },
+  th: { padding: "12px" },
+  td: { padding: "12px", verticalAlign: "top" as const },
+  tdVazio: { padding: "18px 12px", textAlign: "center" as const, color: "#666" },
+  textoSecundario: { color: "#777" },
+  btnMiniNeutro: { padding: "5px 10px", backgroundColor: "#ecf0f1", color: "#333", border: "1px solid #dfe4e6", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" as const },
+  btnConfirmarExclusao: { padding: "5px 10px", backgroundColor: "#c0392b", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" as const },
+  avisoSucesso: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#e8f5e9", color: "#2e7d32", border: "1px solid #c5e3c8", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: "bold" as const },
+  avisoErro: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#fdecea", color: "#c0392b", border: "1px solid #f5c6c2", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: "bold" as const },
+  btnFecharAviso: { background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: "16px", lineHeight: 1 },
+  avisoInline: { backgroundColor: "#fff8e1", border: "1px solid #ffe0a3", color: "#8a6d1a", padding: "10px", borderRadius: "4px", fontSize: "13px" }
 };
