@@ -1,5 +1,6 @@
 .env
-.env.local
+.env.*
+!.env.example
 env_juridico/
 venv/
 .venv/
