@@ -20,6 +20,18 @@ def criar_processo(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
 ):
+    # O cliente vem do corpo da requisição, então precisa ser conferido: sem
+    # isto dá para vincular um processo deste escritório a cliente de outro
+    cliente = db.query(models.Cliente).filter(
+        models.Cliente.id == processo.cliente_id,
+        models.Cliente.escritorio_id == current_user.escritorio_id
+    ).first()
+    if not cliente:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente não encontrado neste escritório."
+        )
+
     dados_processo = processo.model_dump()
 
     dados_processo["escritorio_id"] = current_user.escritorio_id
