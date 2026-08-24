@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function Login() {
+interface Props {
+  onIrParaCadastro: () => void;
+}
+
+export default function Login({ onIrParaCadastro }: Props) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,6 +71,13 @@ export default function Login() {
             ENTRAR
           </button>
         </form>
+
+        <p style={rodapeStyle}>
+          Ainda não tem escritório cadastrado?{' '}
+          <button type="button" onClick={onIrParaCadastro} style={linkStyle}>
+            Criar conta
+          </button>
+        </p>
       </div>
     </div>
   );
@@ -97,7 +108,16 @@ const inputStyle = {
   flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '10px', backgroundColor: '#e8e8e8'
 };
 
-const buttonStyle = { 
-  backgroundColor: '#D4AF37', color: 'white', padding: '10px', border: 'none', 
+const buttonStyle = {
+  backgroundColor: '#D4AF37', color: 'white', padding: '10px', border: 'none',
   borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' as const, marginTop: '10px'
+};
+
+const rodapeStyle = {
+  marginTop: '22px', marginBottom: 0, fontSize: '13px', color: '#666'
+};
+
+const linkStyle = {
+  background: 'none', border: 'none', color: '#1a2a3a', cursor: 'pointer',
+  fontSize: '13px', fontWeight: 'bold' as const, textDecoration: 'underline', padding: 0
 };

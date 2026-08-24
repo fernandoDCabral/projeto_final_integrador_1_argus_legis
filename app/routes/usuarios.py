@@ -45,9 +45,12 @@ def listar_usuarios(
     limit: int = 100, 
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
-): 
-    usuarios = db.query(models.Usuario).order_by(
-        models.Usuario.id.desc()).offset(skip).limit(limit).all()
+):
+    # Restringe a listagem ao escritório do usuário logado: sem este filtro
+    # um ADMIN enxerga a equipe de todos os escritórios da base
+    usuarios = db.query(models.Usuario).filter(
+        models.Usuario.escritorio_id == current_user.escritorio_id
+    ).order_by(models.Usuario.id.desc()).offset(skip).limit(limit).all()
     return usuarios
 
 @router.delete("/{usuario_id}")
@@ -63,8 +66,12 @@ def excluir_usuario(
             detail="Operação não permitida: não é possível excluir a sua própria conta."
         )
 
+    # O filtro por escritório também vale aqui: um usuário de outro escritório
+    # deve ser indistinguível de um usuário inexistente
     usuario_para_excluir = db.query(models.Usuario).filter(
-        models.Usuario.id == usuario_id).first()
+        models.Usuario.id == usuario_id,
+        models.Usuario.escritorio_id == current_user.escritorio_id
+    ).first()
     if not usuario_para_excluir:
         raise HTTPException(
             status_code=404,
