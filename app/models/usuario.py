@@ -7,6 +7,7 @@ from ..database import Base
 if TYPE_CHECKING:
     from .escritorio import Escritorio
     from .processo import Processo
+    from .token_recuperacao import TokenRecuperacao
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -28,4 +29,10 @@ class Usuario(Base):
     processos_responsaveis: Mapped[list["Processo"]] = relationship(
         back_populates="responsavel",
         foreign_keys="[Processo.responsavel_id]"
+    )
+    # Excluir o usuário leva junto os tokens dele, que sem dono não
+    # significam mais nada
+    tokens_recuperacao: Mapped[list["TokenRecuperacao"]] = relationship(
+        back_populates="usuario",
+        cascade="all, delete-orphan"
     )

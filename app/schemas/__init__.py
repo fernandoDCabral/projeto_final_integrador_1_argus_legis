@@ -4,4 +4,10 @@ from .cliente import ClienteBase, ClienteCreate, ClienteUpdate, ClienteResponse,
 from .prazo import PrazoBase, PrazoCreate, PrazoResponse, PrazoUpdate
 from .auth import LoginResponse,LoginRequest,LoginUserResponse
 from .registro import RegistroEscritorioRequest, RegistroEscritorioResponse
+from .recuperacao import (
+    EsqueciSenhaRequest,
+    MensagemResponse,
+    TokenValidoResponse,
+    RedefinirSenhaRequest,
+)
 from .processo import ProcessoBase,ProcessoCreate,ProcessoUpdate,ProcessoResponse,ProcessoPrazoMovimentacaoResponse

@@ -1,9 +1,17 @@
+import logging
 import os
 from fastapi import FastAPI
 from app import models, routes
 from app.database import engine
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+
+# Garante que os logs da aplicação apareçam junto com os do uvicorn — é por
+# onde sai o link de recuperação enquanto o SMTP não estiver configurado
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s [%(name)s] %(message)s"
+)
 
 # Cria tabelas no banco, se não existirem
 models.Base.metadata.create_all(bind=engine)
