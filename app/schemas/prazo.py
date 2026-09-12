@@ -1,10 +1,11 @@
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
+from datetime import date
 from typing import Optional
 
 class PrazoBase(BaseModel):
     descricao: str
-    data_publicacao: datetime
+    # Ausente/None = ainda não publicado no Diário Oficial (prazo interno).
+    data_publicacao: Optional[date] = None
     finalizado: bool = False
 
 class PrazoCreate(PrazoBase):
@@ -13,10 +14,14 @@ class PrazoCreate(PrazoBase):
 class PrazoResponse(PrazoBase):
     id: int
     processo_id: int
-    data_vencimento: datetime
+    data_vencimento: date
+    # Derivado no service a partir da presença de data_publicacao — não é
+    # aceito como input em PrazoCreate/PrazoUpdate.
+    is_interno: bool
     model_config = ConfigDict(from_attributes=True)
 
 class PrazoUpdate(BaseModel):
     descricao: Optional[str] = None
-    data_vencimento: Optional[datetime] = None
+    data_publicacao: Optional[date] = None
+    data_vencimento: Optional[date] = None
     finalizado: Optional[bool] = None

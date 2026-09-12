@@ -13,9 +13,6 @@ logging.basicConfig(
     format="%(levelname)s [%(name)s] %(message)s"
 )
 
-# Cria tabelas no banco, se não existirem
-models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI(
     title=settings.APP_NAME,
     description="Sistema de gestão jurídica",
