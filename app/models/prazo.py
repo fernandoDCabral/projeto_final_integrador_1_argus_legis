@@ -17,7 +17,7 @@ class Prazo(Base):
     data_publicacao: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     data_vencimento: Mapped[date] = mapped_column(Date)
     finalizado: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_interno: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    interno: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     # Foreign keys
     processo_id: Mapped[int] = mapped_column(ForeignKey("processos.id"))

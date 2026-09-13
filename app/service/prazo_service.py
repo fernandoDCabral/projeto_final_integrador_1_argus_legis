@@ -81,17 +81,17 @@ def criar_prazo(db: Session, prazo_data: PrazoCreate):
             data_publicacao=prazo_data.data_publicacao,
             tipo_processo=processo.tipo_processo
         )
-        is_interno = False
+        interno = False
     else:
         data_vencimento = calcular_data_vencimento_interno(processo)
-        is_interno = True
+        interno = True
 
     novo_prazo = Prazo(
         descricao=prazo_data.descricao,
         data_publicacao=prazo_data.data_publicacao,
         data_vencimento=data_vencimento,
         finalizado=prazo_data.finalizado,
-        is_interno=is_interno,
+        interno=interno,
         processo_id=prazo_data.processo_id
     )
 
@@ -123,10 +123,10 @@ def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
                 data_publicacao=dados_dict["data_publicacao"],
                 tipo_processo=processo.tipo_processo
             )
-            dados_dict["is_interno"] = False
+            dados_dict["interno"] = False
         else:
             dados_dict["data_vencimento"] = calcular_data_vencimento_interno(processo)
-            dados_dict["is_interno"] = True
+            dados_dict["interno"] = True
 
     for chave, valor in dados_dict.items():
         setattr(prazo, chave, valor)
