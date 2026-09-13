@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 class Processo(Base):
     __tablename__ = "processos"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cnj: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    cnj: Mapped[Optional[str]] = mapped_column(String(30), unique=True, index=True, nullable=True)
     titulo: Mapped[str] = mapped_column(String(100))
-    tribunal: Mapped[str] = mapped_column(String(50), nullable=True)
+    tribunal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, server_default="TJCE")
     status: Mapped[str] = mapped_column(String(20))
     data_cadastro: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     tipo_processo: Mapped[str] = mapped_column(String(50), nullable=False)
