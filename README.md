@@ -45,6 +45,7 @@ argus_legis/
 │   ├── models/         # Modelos do banco de dados (SQLAlchemy)
 │   ├── routes/         # Definição das rotas e endpoints protegidos
 │   ├── schemas/        # Esquemas de validação de entrada/saída
+│   ├── scripts/        # Scripts utilitários (ex.: seed de feriados)
 │   ├── utils/          # Funções auxiliares e utilitárias
 │   ├── database.py     # Configuração e conexão com o banco
 │   └── main.py         # Ponto de entrada da aplicação (CORS Integrado)
