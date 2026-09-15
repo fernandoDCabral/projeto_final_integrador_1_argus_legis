@@ -26,6 +26,7 @@ O projeto é estruturado em camadas que operam de forma integrada através de co
 ### **Backend**
 * **Python 3.11+ & FastAPI:** Alta performance com suporte a operações assíncronas.
 * **SQLAlchemy:** ORM para comunicação eficiente com o banco de dados.
+* **Alembic:** Versionamento e migração de schema do banco de dados, permitindo evoluir tabelas sem perda de dados.
 * **Pydantic V2:** Validação rigorosa de dados (CPF, CNPJ, CNJ) e gestão centralizada de configurações (BaseSettings).
 * **Segurança (OAuth2 & JWT):** Autenticação robusta utilizando o protocolo OAuth2PasswordBearer e tokens JWT (JSON Web Tokens).
 
@@ -125,9 +126,11 @@ docker compose up --build -d
 * **Gestão Centralizada de Configurações:** Uso avançado do `pydantic-settings` para validar tipagens de variáveis de ambiente antes da inicialização do servidor.
 * **Segurança e Tipagem:** Uso de TypeScript e Pydantic para garantir integridade de dados do banco de dados até a renderização na tela.
 * **Resiliência:** Implementação de `healthchecks` no Docker Compose para evitar erros de conexão na inicialização.
+* **Migrações Versionadas com Alembic:** Schema do banco evolui via migrations rastreáveis e reversíveis, eliminando a dependência de `create_all` e permitindo mudanças incrementais e seguras nas tabelas.
+* **Prazos Processuais em Dias Úteis:** Cálculo de vencimento de prazos respeita fins de semana, feriados nacionais/estaduais/municipais e o recesso forense do foro de Fortaleza/CE, seguindo a regra de contagem do art. 224 do CPC.
 
 ---
 
-*Atualizado em: 29 de Maio de 2026.*
+*Atualizado em: 15 de Setembro de 2026.*
 
 ---
