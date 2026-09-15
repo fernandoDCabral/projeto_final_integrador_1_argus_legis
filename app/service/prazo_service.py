@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from app.models import Processo, Prazo
+from app.models import Processo, Prazo, Feriado
 from app.schemas import PrazoCreate, PrazoUpdate
 
 PRAZOS_POR_TIPO = {
@@ -43,13 +43,51 @@ def buscar_prazo_por_tipo(tipo_processo: str):
 
     return dias
 
-def calcular_data_vencimento(data_publicacao, tipo_processo: str):
+# Janela de busca de feriados a partir da publicação: folga generosa o
+# bastante para cobrir qualquer prazo de PRAZOS_POR_TIPO mesmo atravessando
+# o recesso forense inteiro (20/dez-20/jan) mais de uma vez.
+_HORIZONTE_BUSCA_FERIADOS_DIAS = 400
+
+def _feriados_no_periodo(db: Session, inicio: date, fim: date) -> set[date]:
+    feriados = db.query(Feriado.data).filter(
+        Feriado.data >= inicio, Feriado.data <= fim
+    ).all()
+
+    return {data for (data,) in feriados}
+
+def _verificar_dia_util(data: date, feriados: set[date]) -> bool:
+    return data.weekday() < 5 and data not in feriados
+
+def _proximo_dia_util(data: date, feriados: set[date]) -> date:
+    proxima = data + timedelta(days=1)
+
+    while not _verificar_dia_util(proxima, feriados):
+        proxima += timedelta(days=1)
+
+    return proxima
+
+def _contar_dias_uteis(db: Session, data_inicio: date, dias: int) -> date:
+    """Conta `dias` dias úteis a partir de `data_inicio` (art. 224 CPC: o dia
+    inicial não conta; a contagem começa no primeiro dia útil seguinte). Fins
+    de semana, feriados, pontos facultativos e o recesso forense (tabela
+    `feriados`) são pulados.
+    """
+    horizonte = data_inicio + timedelta(days=_HORIZONTE_BUSCA_FERIADOS_DIAS)
+    feriados = _feriados_no_periodo(db, data_inicio, horizonte)
+
+    data_atual = data_inicio
+    for _ in range(dias):
+        data_atual = _proximo_dia_util(data_atual, feriados)
+
+    return data_atual
+
+def calcular_data_vencimento(db: Session, data_publicacao: date, tipo_processo: str) -> date:
     dias = buscar_prazo_por_tipo(tipo_processo)
+    return _contar_dias_uteis(db, data_publicacao, dias)
 
-    return data_publicacao + timedelta(days=dias)
-
-def calcular_data_vencimento_interno(processo: Processo):
-    return _data_local(processo.data_cadastro) + timedelta(days=PRAZO_PETICAO_INICIAL_DIAS)
+def calcular_data_vencimento_interno(db: Session, processo: Processo) -> date:
+    data_cadastro_local = _data_local(processo.data_cadastro)
+    return _contar_dias_uteis(db, data_cadastro_local, PRAZO_PETICAO_INICIAL_DIAS)
 
 def calcular_prazo_movimentacao(processo: Processo):
     prazo_dias = buscar_prazo_por_tipo(processo.tipo_processo)
@@ -78,12 +116,13 @@ def criar_prazo(db: Session, prazo_data: PrazoCreate):
 
     if prazo_data.data_publicacao is not None:
         data_vencimento = calcular_data_vencimento(
+            db=db,
             data_publicacao=prazo_data.data_publicacao,
             tipo_processo=processo.tipo_processo
         )
         interno = False
     else:
-        data_vencimento = calcular_data_vencimento_interno(processo)
+        data_vencimento = calcular_data_vencimento_interno(db, processo)
         interno = True
 
     novo_prazo = Prazo(
@@ -120,12 +159,13 @@ def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
 
         if dados_dict["data_publicacao"] is not None:
             dados_dict["data_vencimento"] = calcular_data_vencimento(
+                db=db,
                 data_publicacao=dados_dict["data_publicacao"],
                 tipo_processo=processo.tipo_processo
             )
             dados_dict["interno"] = False
         else:
-            dados_dict["data_vencimento"] = calcular_data_vencimento_interno(processo)
+            dados_dict["data_vencimento"] = calcular_data_vencimento_interno(db, processo)
             dados_dict["interno"] = True
 
     for chave, valor in dados_dict.items():
