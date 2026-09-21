@@ -10,4 +10,5 @@ from .recuperacao import (
     TokenValidoResponse,
     RedefinirSenhaRequest,
 )
+from .datajud import MovimentacaoDatajud, ConsultaDatajudResponse
 from .processo import ProcessoBase,ProcessoCreate,ProcessoUpdate,ProcessoResponse,ProcessoPrazoMovimentacaoResponse
