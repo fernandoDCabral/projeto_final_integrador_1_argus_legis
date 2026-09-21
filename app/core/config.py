@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # troca senha sem pedir a antiga
     RESET_TOKEN_EXPIRE_MINUTES: int = Field(default=60)
 
+    # Consulta pública ao DataJud (CNJ). A chave é pública, publicada pelo
+    # próprio CNJ em https://datajud-wiki.cnj.jus.br/api-publica/acesso/, e
+    # pode ser trocada por eles a qualquer momento — basta sobrescrever no .env
+    DATAJUD_API_KEY: str = Field(default="cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==")
+
     @property
     def email_configurado(self) -> bool:
         return bool(self.SMTP_USER and self.SMTP_PASSWORD)
