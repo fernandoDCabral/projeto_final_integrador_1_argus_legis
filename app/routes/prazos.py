@@ -35,13 +35,7 @@ def atualizar_status(
     
     verificar_acesso_ao_processo(prazo_atual.processo_id, current_user.id, db)
 
-    dados_dict = dados_atualizados.model_dump(exclude_unset=True)
-    for chave, valor in dados_dict.items():
-        setattr(prazo_atual, chave, valor)
-    
-    db.commit()
-    db.refresh(prazo_atual)
-    return prazo_atual
+    return prazo_service.atualizar_prazo(db, prazo_atual, dados_atualizados)
 
 @router.delete("/{prazo_id}")
 def excluir_prazo(

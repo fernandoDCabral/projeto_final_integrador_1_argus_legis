@@ -32,6 +32,19 @@ def criar_processo(
             detail="Cliente não encontrado neste escritório."
         )
 
+    # cnj é opcional (processo pode nascer sem protocolo), mas quando
+    # informado precisa ser único globalmente — checa antes do commit para
+    # não deixar a IntegrityError da constraint UNIQUE estourar como 500.
+    if processo.cnj:
+        duplicado = db.query(models.Processo).filter(
+            models.Processo.cnj == processo.cnj
+        ).first()
+        if duplicado:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Já existe um processo com este CNJ: {duplicado.titulo}."
+            )
+
     dados_processo = processo.model_dump()
 
     dados_processo["escritorio_id"] = current_user.escritorio_id
@@ -110,6 +123,18 @@ def atualizar_processo(
     verificar_acesso_ao_processo(processo_id, current_user.id, db)
 
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
+
+    if dados_dict.get("cnj"):
+        duplicado = db.query(models.Processo).filter(
+            models.Processo.cnj == dados_dict["cnj"],
+            models.Processo.id != processo_id
+        ).first()
+        if duplicado:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Já existe um processo com este CNJ: {duplicado.titulo}."
+            )
+
     for chave, valor in dados_dict.items():
         setattr(processo_atual, chave, valor)
 

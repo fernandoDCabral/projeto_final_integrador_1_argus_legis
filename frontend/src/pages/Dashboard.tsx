@@ -122,7 +122,6 @@ export default function Dashboard() {
       await api.post('/prazos/', {
         processo_id: processo.id,
         descricao: `Prazo Inicial (${processo.tipo_processo})`,
-        data_publicacao: processo.data_cadastro,
         finalizado: false
       });
       await carregarDados();
@@ -264,10 +263,18 @@ export default function Dashboard() {
   };
 
   // --- UTILS DE DATA E FORMATOS ---
+  // Constrói a data a partir dos componentes Y/M/D em vez de "new Date(str)":
+  // uma string "YYYY-MM-DD" é interpretada pelo JS como UTC meia-noite, o que
+  // desloca o dia em fusos negativos (Brasil) ao comparar com horário local.
+  const parseDataLocal = (dataStr: string) => {
+      const [ano, mes, dia] = dataStr.split('T')[0].split('-').map(Number);
+      return new Date(ano, mes - 1, dia);
+  };
+
   const analisarPrazo = (dataVencimento?: string) => {
       if (!dataVencimento) return { cor: "#95a5a6", texto: "Sem prazo", dias: null };
       const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-      const vencimento = new Date(dataVencimento); vencimento.setHours(0, 0, 0, 0);
+      const vencimento = parseDataLocal(dataVencimento);
       const diffTime = vencimento.getTime() - hoje.getTime();
       const diffDias = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       if (diffDias < 0) return { cor: "#c0392b", texto: "Vencido", dias: diffDias };

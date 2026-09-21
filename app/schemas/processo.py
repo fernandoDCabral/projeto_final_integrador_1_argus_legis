@@ -10,9 +10,13 @@ from ..utils.validators import padroniza_cnj
 CNJ = Annotated[str, AfterValidator(padroniza_cnj)]
 
 class ProcessoBase(BaseModel):
-    cnj: CNJ
+    # cnj é opcional: processos ainda não protocolados no tribunal (pool como
+    # petição inicial) não têm número CNJ até o protocolo.
+    cnj: Optional[CNJ] = None
     titulo: str
-    tribunal: str
+    # Escopo do projeto restrito ao Ceará: tribunal tem default TJCE, mas
+    # outros valores continuam aceitos se enviados explicitamente.
+    tribunal: Optional[str] = "TJCE"
     status: str = "Ativo"
     tipo_processo: str
 
