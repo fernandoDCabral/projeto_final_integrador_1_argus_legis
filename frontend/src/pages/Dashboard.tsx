@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../services/api";
 import type { Cliente, TipoPessoa } from "../types/cliente";
+import type { ConsultaDatajud } from "../types/datajud";
 import {
   formatarCpf,
   formatarCnpj,
@@ -9,6 +10,7 @@ import {
   somenteDigitos,
   documentoDoCliente,
   rotuloTipoPessoa,
+  formatarDataSimples,
 } from "../utils/formatos";
 
 type AbaAdmin = "cadastro" | "clientes" | "processos";
@@ -53,6 +55,11 @@ export default function Dashboard() {
     cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: ""
   });
   const [formCliente, setFormCliente] = useState(FORM_CLIENTE_VAZIO);
+
+  // Consulta ao DataJud dentro do modal de processo
+  const [consultaDatajud, setConsultaDatajud] = useState<ConsultaDatajud | null>(null);
+  const [buscandoDatajud, setBuscandoDatajud] = useState(false);
+  const [erroDatajud, setErroDatajud] = useState("");
 
   // Estados Globais
   const [erro, setErro] = useState("");
@@ -200,6 +207,37 @@ export default function Dashboard() {
     }
   };
 
+  const fecharModalProcesso = () => {
+    setModalProcessoAberto(false);
+    setFormProcesso({ cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: "" });
+    setConsultaDatajud(null);
+    setErroDatajud("");
+  };
+
+  const handleBuscarDatajud = async () => {
+    setBuscandoDatajud(true);
+    setErroDatajud("");
+    setConsultaDatajud(null);
+    try {
+      const { data } = await api.get<ConsultaDatajud>(
+        `/datajud/${somenteDigitos(formProcesso.cnj)}`
+      );
+      setConsultaDatajud(data);
+      // Tudo continua editável: são sugestões para o usuário conferir
+      setFormProcesso(atual => ({
+        ...atual,
+        titulo: data.titulo_sugerido ?? atual.titulo,
+        tribunal: data.tribunal,
+        tipo_processo: data.tipo_processo_sugerido ?? atual.tipo_processo,
+      }));
+    } catch (error) {
+      // O erro fica dentro do modal: o aviso geral apareceria atrás do overlay
+      setErroDatajud(mensagemDeErro(error, "Não foi possível consultar o DataJud."));
+    } finally {
+      setBuscandoDatajud(false);
+    }
+  };
+
   const handleCadastrarProcesso = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -215,8 +253,7 @@ export default function Dashboard() {
         tipo: "sucesso",
         texto: "Processo cadastrado e enviado para a piscina!"
       });
-      setModalProcessoAberto(false);
-      setFormProcesso({ cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: "" });
+      fecharModalProcesso();
       await carregarDados();
     } catch (error) {
       setAviso({
@@ -563,7 +600,75 @@ export default function Dashboard() {
               </div>
               <div>
                 <label style={styles.label}>Número CNJ</label>
-                <input required placeholder="Apenas números ou formatado" style={styles.input} type="text" value={formProcesso.cnj} onChange={e => setFormProcesso({...formProcesso, cnj: e.target.value})} />
+                <div style={styles.linhaCnj}>
+                  <input
+                    required
+                    placeholder="Apenas números ou formatado"
+                    style={{ ...styles.input, flex: 1, minWidth: 0 }}
+                    type="text"
+                    value={formProcesso.cnj}
+                    onChange={e => {
+                      setFormProcesso({...formProcesso, cnj: e.target.value});
+                      // Resultado de outro número não pode continuar na tela
+                      setConsultaDatajud(null);
+                      setErroDatajud("");
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBuscarDatajud}
+                    disabled={somenteDigitos(formProcesso.cnj).length !== 20 || buscandoDatajud}
+                    style={{
+                      ...styles.btnBuscarDatajud,
+                      opacity: somenteDigitos(formProcesso.cnj).length !== 20 || buscandoDatajud ? 0.5 : 1,
+                      cursor: somenteDigitos(formProcesso.cnj).length !== 20 || buscandoDatajud ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    {buscandoDatajud ? "Buscando..." : "🔎 Buscar no DataJud"}
+                  </button>
+                </div>
+
+                {erroDatajud && (
+                  <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroDatajud}</div>
+                )}
+
+                {consultaDatajud && (
+                  <div style={styles.caixaDatajud}>
+                    <strong>{consultaDatajud.classe ?? "Processo encontrado"}</strong>
+                    <div style={styles.textoSecundario}>
+                      {[consultaDatajud.orgao_julgador, consultaDatajud.grau].filter(Boolean).join(" · ")}
+                    </div>
+                    {consultaDatajud.data_ajuizamento && (
+                      <div style={styles.textoSecundario}>
+                        Ajuizado em {formatarDataSimples(consultaDatajud.data_ajuizamento)}
+                      </div>
+                    )}
+
+                    <div style={styles.subtituloDatajud}>Últimas movimentações</div>
+                    {consultaDatajud.movimentacoes.length > 0 ? (
+                      <ul style={styles.listaMovimentacoes}>
+                        {consultaDatajud.movimentacoes.map((mov, i) => (
+                          <li key={i} style={styles.itemMovimentacao}>
+                            <span style={styles.dataMovimentacao}>
+                              {formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}
+                            </span>
+                            {mov.nome}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={styles.textoSecundario}>Nenhuma movimentação registrada.</div>
+                    )}
+
+                    <small style={styles.notaDatajud}>
+                      Fonte: DataJud/CNJ
+                      {consultaDatajud.atualizado_em &&
+                        `, atualizado em ${new Date(consultaDatajud.atualizado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
+                      . O CNJ recebe os dados dos tribunais com atraso: não use estas
+                      movimentações para contar prazo.
+                    </small>
+                  </div>
+                )}
               </div>
               <div>
                 <label style={styles.label}>Título do Processo</label>
@@ -586,10 +691,7 @@ export default function Dashboard() {
               <div style={styles.linhaBotoes}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setModalProcessoAberto(false);
-                    setFormProcesso({ cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: "" });
-                  }}
+                  onClick={fecharModalProcesso}
                   style={styles.btnCancelar}
                 >
                   Cancelar
@@ -769,5 +871,13 @@ const styles = {
   avisoSucesso: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#e8f5e9", color: "#2e7d32", border: "1px solid #c5e3c8", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: "bold" as const },
   avisoErro: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#fdecea", color: "#c0392b", border: "1px solid #f5c6c2", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: "bold" as const },
   btnFecharAviso: { background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: "16px", lineHeight: 1 },
+  linhaCnj: { display: "flex", gap: "8px" },
+  btnBuscarDatajud: { padding: "0 12px", backgroundColor: "#1a2a3a", color: "white", border: "none", borderRadius: "4px", fontWeight: "bold" as const, whiteSpace: "nowrap" as const },
+  caixaDatajud: { marginTop: "10px", padding: "12px", backgroundColor: "#f4f7fa", border: "1px solid #d6e0ea", borderRadius: "4px", fontSize: "13px", display: "flex", flexDirection: "column" as const, gap: "4px" },
+  subtituloDatajud: { marginTop: "8px", fontWeight: "bold" as const, color: "#1a2a3a" },
+  listaMovimentacoes: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" as const, gap: "4px" },
+  itemMovimentacao: { display: "flex", gap: "8px" },
+  dataMovimentacao: { color: "#777", whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const },
+  notaDatajud: { marginTop: "8px", color: "#8a6d1a" },
   avisoInline: { backgroundColor: "#fff8e1", border: "1px solid #ffe0a3", color: "#8a6d1a", padding: "10px", borderRadius: "4px", fontSize: "13px" }
 };
