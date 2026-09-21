@@ -43,3 +43,8 @@ export const rotuloTipoPessoa = (tipo: string) => {
   if (normalizado === 'JURIDICA') return 'Pessoa jurídica';
   return tipo || '—';
 };
+
+// Data sem hora vinda da API ("2026-06-16"). Passar por new Date() a leria
+// como meia-noite UTC, e no Brasil apareceria o dia anterior
+export const formatarDataSimples = (iso: string) =>
+  iso.split('-').reverse().join('/');
