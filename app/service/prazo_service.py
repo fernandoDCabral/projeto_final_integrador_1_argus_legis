@@ -81,8 +81,40 @@ def _contar_dias_uteis(db: Session, data_inicio: date, dias: int) -> date:
 
     return data_atual
 
+def _contar_dias_corridos(db: Session, data_inicio: date, dias: int) -> date:
+    """Prazo penal (CPP art. 798): conta sábado, domingo e feriado, mas não o
+    dia do começo. O recesso de 20/dez a 20/jan suspende a contagem (art.
+    798-A) e, se o último dia não for útil, vence no próximo dia útil (§3º).
+    """
+    horizonte = data_inicio + timedelta(days=_HORIZONTE_BUSCA_FERIADOS_DIAS)
+    feriados = _feriados_no_periodo(db, data_inicio, horizonte)
+    recesso = {
+        data for (data,) in db.query(Feriado.data).filter(
+            Feriado.data >= data_inicio,
+            Feriado.data <= horizonte,
+            Feriado.tipo == "recesso_forense"
+        ).all()
+    }
+
+    data_atual = data_inicio
+    contados = 0
+    while contados < dias:
+        data_atual += timedelta(days=1)
+        if data_atual not in recesso:
+            contados += 1
+
+    if not _verificar_dia_util(data_atual, feriados):
+        data_atual = _proximo_dia_util(data_atual, feriados)
+
+    return data_atual
+
+def proximo_dia_util(db: Session, data: date) -> date:
+    return _contar_dias_uteis(db, data, 1)
+
 def calcular_data_vencimento(db: Session, data_publicacao: date, tipo_processo: str) -> date:
     dias = buscar_prazo_por_tipo(tipo_processo)
+    if tipo_processo.lower() == "criminal":
+        return _contar_dias_corridos(db, data_publicacao, dias)
     return _contar_dias_uteis(db, data_publicacao, dias)
 
 def calcular_data_vencimento_interno(db: Session, processo: Processo) -> date:
