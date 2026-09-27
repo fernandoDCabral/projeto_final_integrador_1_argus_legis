@@ -5,7 +5,7 @@ from typing import List
 import re
 from app.api.deps import get_current_user, VerificadorPerfil
 from app import models, schemas, database
-from app.service import prazo_service
+from app.service import prazo_service, datajud_service
 from app.utils.autorizacao import verificar_acesso_ao_processo
 
 router = APIRouter(
@@ -49,9 +49,27 @@ def criar_processo(
 
     dados_processo["escritorio_id"] = current_user.escritorio_id
     dados_processo["criador_id"] = current_user.id
+    # Coluna JSON não aceita date; em modo json as datas viram texto
+    dados_processo["movimentacoes"] = processo.model_dump(mode="json")["movimentacoes"]
 
     novo_processo = models.Processo(**dados_processo)
+    if novo_processo.data_publicacao_datajud:
+        novo_processo.prazo_estimado = prazo_service.calcular_data_vencimento(
+            db, novo_processo.data_publicacao_datajud, novo_processo.tipo_processo)
+
     db.add(novo_processo)
+    db.flush()
+    # Busca a data_cadastro gerada pelo banco, que o prazo inicial usa
+    db.refresh(novo_processo)
+
+    # O prazo inicial conta da data de cadastro, então já nasce com o
+    # processo e fica visível na piscina antes de alguém assumir
+    db.add(models.Prazo(
+        descricao=f"Prazo Inicial ({novo_processo.tipo_processo})",
+        data_vencimento=prazo_service.calcular_data_vencimento_interno(db, novo_processo),
+        interno=True,
+        processo_id=novo_processo.id
+    ))
     db.commit()
     db.refresh(novo_processo)
     return novo_processo
@@ -140,9 +158,52 @@ def atualizar_processo(
     for chave, valor in dados_dict.items():
         setattr(processo_atual, chave, valor)
 
+    # O tipo define quantos dias o prazo tem, então a estimativa muda junto
+    if "tipo_processo" in dados_dict and processo_atual.data_publicacao_datajud:
+        processo_atual.prazo_estimado = prazo_service.calcular_data_vencimento(
+            db, processo_atual.data_publicacao_datajud, processo_atual.tipo_processo)
+
     db.commit()
     db.refresh(processo_atual)
     return processo_atual
+
+@router.post("/{processo_id}/datajud", response_model=schemas.ProcessoResponse)
+def atualizar_dados_datajud(
+    processo_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
+):
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
+    processo = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+
+    if not processo.cnj:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Processo sem número CNJ não pode ser consultado no DataJud."
+        )
+
+    consulta = schemas.ConsultaDatajudResponse(
+        **datajud_service.consultar_processo(processo.cnj, db))
+
+    processo.classe = consulta.classe
+    processo.orgao_julgador = consulta.orgao_julgador
+    processo.grau = consulta.grau
+    processo.data_ajuizamento = consulta.data_ajuizamento
+    processo.assuntos = consulta.assuntos
+    processo.movimentacoes = [m.model_dump(mode="json") for m in consulta.movimentacoes]
+    processo.datajud_atualizado_em = consulta.atualizado_em
+    processo.data_publicacao_datajud = consulta.data_publicacao
+    processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
+    processo.prazo_estimado = None
+    if consulta.data_publicacao:
+        processo.prazo_estimado = prazo_service.calcular_data_vencimento(
+            db, consulta.data_publicacao, processo.tipo_processo)
+
+    db.commit()
+    db.refresh(processo)
+    return processo
 
 @router.delete("/{processo_id}")
 def excluir_processo(

@@ -1,6 +1,6 @@
 from __future__ import annotations
-from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, ForeignKey, func
+from datetime import date, datetime
+from sqlalchemy import String, Integer, Boolean, Date, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING, Optional
 from ..database import Base
@@ -20,6 +20,20 @@ class Processo(Base):
     status: Mapped[str] = mapped_column(String(20))
     data_cadastro: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     tipo_processo: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Dados da consulta ao DataJud, guardados para o advogado ver antes de assumir
+    classe: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    orgao_julgador: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    grau: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    data_ajuizamento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    assuntos: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
+    movimentacoes: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
+    datajud_atualizado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Última publicação no Diário achada no DataJud e o vencimento calculado a
+    # partir dela. É só estimativa: o advogado confirma a data ao assumir
+    data_publicacao_datajud: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    prazo_estimado: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    peticao_apos_publicacao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     #Foreign keys
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"))

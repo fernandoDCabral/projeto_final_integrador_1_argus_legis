@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
-from app import schemas
+from sqlalchemy.orm import Session
+from app import schemas, database
 from app.api.deps import get_current_user
 from app.service import datajud_service
 
@@ -12,11 +13,11 @@ router = APIRouter(
 )
 
 @router.get("/{cnj}", response_model=schemas.ConsultaDatajudResponse)
-def consultar_processo(cnj: str):
+def consultar_processo(cnj: str, db: Session = Depends(database.get_db)):
     """
     Busca um processo na API pública do DataJud pelo número CNJ.
 
     Serve para pré-preencher o cadastro. Não serve para contar prazo: o CNJ
     recebe os dados dos tribunais com atraso, às vezes de semanas.
     """
-    return datajud_service.consultar_processo(cnj)
+    return datajud_service.consultar_processo(cnj, db)
