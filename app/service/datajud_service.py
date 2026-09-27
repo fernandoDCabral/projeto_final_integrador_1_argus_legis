@@ -9,8 +9,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.service import prazo_service
 
 logger = logging.getLogger("argus.datajud")
 
@@ -39,7 +41,12 @@ GRAUS = {
     "SUP": "Tribunal Superior",
 }
 
-PALAVRAS_CRIMINAIS = ("penal", "criminal", "inquérito", "termo circunstanciado")
+# Movimentos da Tabela Processual Unificada do CNJ que marcam a publicação
+CODIGO_PUBLICACAO = 92
+CODIGO_DISPONIBILIZACAO_DJE = 1061
+CODIGO_PETICAO = 85
+
+PALAVRAS_CRIMINAIS =("penal", "criminal", "inquérito", "termo circunstanciado")
 PALAVRAS_CIVEIS = ("cível", "civel")
 
 def digito_verificador_valido(digitos: str) -> bool:
@@ -185,7 +192,7 @@ def _sugerir_tipo_processo(segmento: int, classe: Optional[str]) -> Optional[str
         return "Civil"
     return None
 
-def consultar_processo(cnj: str) -> dict:
+def consultar_processo(cnj: str, db: Session) -> dict:
     digitos = re.sub(r"\D", "", cnj)
 
     if len(digitos) != 20:
@@ -222,6 +229,32 @@ def consultar_processo(cnj: str) -> dict:
     movimentacoes = [m for m in map(_movimentacao, processo.get("movimentos", [])) if m]
     movimentacoes.sort(key=lambda m: m["momento"], reverse=True)
 
+    # Procura em todas as movimentações, não só nas que vão para a tela. A
+    # publicação é o dia útil seguinte à disponibilização (CPC art. 224, §2º).
+    # A lista vem da mais recente para a mais antiga, então toda petição vista
+    # antes de achar a publicação foi protocolada depois dela
+    data_publicacao = None
+    peticao_apos_publicacao = False
+    for mov in movimentacoes:
+        if mov["codigo"] == CODIGO_PETICAO:
+            peticao_apos_publicacao = True
+        if mov["codigo"] == CODIGO_DISPONIBILIZACAO_DJE:
+            data_publicacao = prazo_service.proximo_dia_util(db, mov["data"])
+            break
+
+    # Tribunal que não registra a disponibilização: usa o movimento Publicação
+    if data_publicacao is None:
+        peticao_apos_publicacao = False
+        for mov in movimentacoes:
+            if mov["codigo"] == CODIGO_PETICAO:
+                peticao_apos_publicacao = True
+            if mov["codigo"] == CODIGO_PUBLICACAO:
+                data_publicacao = mov["data"]
+                break
+
+    if data_publicacao is None:
+        peticao_apos_publicacao = False
+
     return {
         "cnj": digitos,
         "tribunal": processo.get("tribunal") or indice.upper(),
@@ -234,4 +267,6 @@ def consultar_processo(cnj: str) -> dict:
         "titulo_sugerido": _sugerir_titulo(classe, assuntos),
         "tipo_processo_sugerido": _sugerir_tipo_processo(int(digitos[13]), classe),
         "movimentacoes": movimentacoes[:QTD_MOVIMENTACOES],
+        "data_publicacao": data_publicacao,
+        "peticao_apos_publicacao": peticao_apos_publicacao,
     }
