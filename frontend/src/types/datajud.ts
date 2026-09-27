@@ -17,4 +17,6 @@ export interface ConsultaDatajud {
   titulo_sugerido: string | null;
   tipo_processo_sugerido: string | null;
   movimentacoes: MovimentacaoDatajud[];
+  data_publicacao: string | null;
+  peticao_apos_publicacao: boolean;
 }
