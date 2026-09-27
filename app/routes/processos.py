@@ -100,7 +100,8 @@ def buscar_processo(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    verificar_acesso_ao_processo(processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
     processo = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
     if not processo:
@@ -120,7 +121,8 @@ def atualizar_processo(
     if not processo_atual:
         raise HTTPException(status_code=404, detail="Processo não encontrado!")
 
-    verificar_acesso_ao_processo(processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
 
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
@@ -156,7 +158,8 @@ def excluir_processo(
             detail="Processo não encontrado para exclusão!"
         )
     
-    verificar_acesso_ao_processo(processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
 
     db.delete(processo_para_excluir)
     db.commit()
@@ -171,7 +174,8 @@ def calcular_prazo_movimentacao(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    verificar_acesso_ao_processo(processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
     processo = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
     if not processo:
@@ -188,7 +192,8 @@ def listar_prazos_por_processos(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    verificar_acesso_ao_processo(processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
     return db.query(models.Prazo).filter(
         models.Prazo.processo_id == processo_id).all()
     
