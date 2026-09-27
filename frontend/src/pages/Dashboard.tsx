@@ -32,6 +32,12 @@ export default function Dashboard() {
   const [meusProcessos, setMeusProcessos] = useState<any[]>([]);
   const [piscinaProcessos, setPiscinaProcessos] = useState<any[]>([]);
 
+  // Modal de prévia do processo da piscina
+  const [processoEmPrevia, setProcessoEmPrevia] = useState<any | null>(null);
+  const [dataPublicacaoAssumir, setDataPublicacaoAssumir] = useState("");
+  const [atualizandoDatajud, setAtualizandoDatajud] = useState(false);
+  const [erroPrevia, setErroPrevia] = useState("");
+
   // Estados para o Admin
   const [abaAdmin, setAbaAdmin] = useState<AbaAdmin>("cadastro");
   const [advogados, setAdvogados] = useState<any[]>([]);
@@ -116,17 +122,52 @@ export default function Dashboard() {
   }, [user]);
 
   // --- AÇÕES DO ADVOGADO ---
-  const handleAssumirProcesso = async (processo: any) => {
+  const abrirPrevia = (processo: any) => {
+    setProcessoEmPrevia(processo);
+    // Sugere a publicação achada no DataJud; o advogado confere no DJEN
+    setDataPublicacaoAssumir(processo.data_publicacao_datajud ?? "");
+    setErroPrevia("");
+  };
+
+  const handleAtualizarDatajud = async () => {
+    setAtualizandoDatajud(true);
+    setErroPrevia("");
+    try {
+      const { data } = await api.post(`/processos/${processoEmPrevia.id}/datajud`);
+      abrirPrevia(data);
+      setPiscinaProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
+    } catch (error) {
+      setErroPrevia(mensagemDeErro(error, "Não foi possível consultar o DataJud."));
+    } finally {
+      setAtualizandoDatajud(false);
+    }
+  };
+
+  const handleAssumirProcesso = async () => {
+    const processo = processoEmPrevia;
     try {
       await api.patch(`/processos/${processo.id}`, { responsavel_id: user?.id });
-      await api.post('/prazos/', {
-        processo_id: processo.id,
-        descricao: `Prazo Inicial (${processo.tipo_processo})`,
-        finalizado: false
-      });
+
+      // Processos antigos foram cadastrados sem o prazo inicial
+      if (processo.prazos.length === 0) {
+        await api.post('/prazos/', {
+          processo_id: processo.id,
+          descricao: `Prazo Inicial (${processo.tipo_processo})`,
+          data_publicacao: dataPublicacaoAssumir || null,
+          finalizado: false
+        });
+      } else if (dataPublicacaoAssumir) {
+        // Com a publicação, o prazo passa a contar pelos dias do tipo do processo
+        await api.patch(`/prazos/${processo.prazos[0].id}`, {
+          data_publicacao: dataPublicacaoAssumir
+        });
+      }
+
+      setProcessoEmPrevia(null);
+      setAviso({ tipo: "sucesso", texto: "Processo assumido!" });
       await carregarDados();
     } catch (error) {
-      setAviso({ tipo: "erro", texto: "Não foi possível assumir este processo." });
+      setErroPrevia(mensagemDeErro(error, "Não foi possível assumir este processo."));
     }
   };
 
@@ -245,7 +286,19 @@ export default function Dashboard() {
         titulo: formProcesso.titulo,
         tribunal: formProcesso.tribunal,
         tipo_processo: formProcesso.tipo_processo,
-        cliente_id: parseInt(formProcesso.cliente_id)
+        cliente_id: parseInt(formProcesso.cliente_id),
+        // Guarda o que veio do DataJud para o advogado ver na piscina
+        ...(consultaDatajud && {
+          classe: consultaDatajud.classe,
+          orgao_julgador: consultaDatajud.orgao_julgador,
+          grau: consultaDatajud.grau,
+          data_ajuizamento: consultaDatajud.data_ajuizamento,
+          assuntos: consultaDatajud.assuntos,
+          movimentacoes: consultaDatajud.movimentacoes,
+          datajud_atualizado_em: consultaDatajud.atualizado_em,
+          data_publicacao_datajud: consultaDatajud.data_publicacao,
+          peticao_apos_publicacao: consultaDatajud.peticao_apos_publicacao,
+        })
       });
 
       setAviso({
@@ -287,7 +340,55 @@ export default function Dashboard() {
       return new Date(dataStr).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   };
 
+  // Prazo estimado pela publicação no DataJud que já passou: pode ter sido
+  // perdido ou já respondido, e o advogado precisa ver isso
+  const estimativaVencida = (processo: any) =>
+    !!processo.prazo_estimado && analisarPrazo(processo.prazo_estimado).dias! < 0;
+
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
+
+  // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
+  const renderCaixaDatajud = (dados: Pick<ConsultaDatajud,
+    "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em">) => (
+    <div style={styles.caixaDatajud}>
+      <strong>{dados.classe ?? "Processo encontrado"}</strong>
+      <div style={styles.textoSecundario}>
+        {[dados.orgao_julgador, dados.grau].filter(Boolean).join(" · ")}
+      </div>
+      {dados.data_ajuizamento && (
+        <div style={styles.textoSecundario}>
+          Ajuizado em {formatarDataSimples(dados.data_ajuizamento)}
+        </div>
+      )}
+      {dados.assuntos?.length > 0 && (
+        <div style={styles.textoSecundario}>Assuntos: {dados.assuntos.join(", ")}</div>
+      )}
+
+      <div style={styles.subtituloDatajud}>Últimas movimentações</div>
+      {dados.movimentacoes.length > 0 ? (
+        <ul style={styles.listaMovimentacoes}>
+          {dados.movimentacoes.map((mov, i) => (
+            <li key={i} style={styles.itemMovimentacao}>
+              <span style={styles.dataMovimentacao}>
+                {formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}
+              </span>
+              {mov.nome}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div style={styles.textoSecundario}>Nenhuma movimentação registrada.</div>
+      )}
+
+      <small style={styles.notaDatajud}>
+        Fonte: DataJud/CNJ
+        {dados.atualizado_em &&
+          `, atualizado em ${new Date(dados.atualizado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
+        . O CNJ recebe os dados dos tribunais com atraso: não use estas
+        movimentações para contar prazo.
+      </small>
+    </div>
+  );
 
   const renderAbaEquipe = () => (
     <div>
@@ -639,43 +740,7 @@ export default function Dashboard() {
                   <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroDatajud}</div>
                 )}
 
-                {consultaDatajud && (
-                  <div style={styles.caixaDatajud}>
-                    <strong>{consultaDatajud.classe ?? "Processo encontrado"}</strong>
-                    <div style={styles.textoSecundario}>
-                      {[consultaDatajud.orgao_julgador, consultaDatajud.grau].filter(Boolean).join(" · ")}
-                    </div>
-                    {consultaDatajud.data_ajuizamento && (
-                      <div style={styles.textoSecundario}>
-                        Ajuizado em {formatarDataSimples(consultaDatajud.data_ajuizamento)}
-                      </div>
-                    )}
-
-                    <div style={styles.subtituloDatajud}>Últimas movimentações</div>
-                    {consultaDatajud.movimentacoes.length > 0 ? (
-                      <ul style={styles.listaMovimentacoes}>
-                        {consultaDatajud.movimentacoes.map((mov, i) => (
-                          <li key={i} style={styles.itemMovimentacao}>
-                            <span style={styles.dataMovimentacao}>
-                              {formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}
-                            </span>
-                            {mov.nome}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div style={styles.textoSecundario}>Nenhuma movimentação registrada.</div>
-                    )}
-
-                    <small style={styles.notaDatajud}>
-                      Fonte: DataJud/CNJ
-                      {consultaDatajud.atualizado_em &&
-                        `, atualizado em ${new Date(consultaDatajud.atualizado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
-                      . O CNJ recebe os dados dos tribunais com atraso: não use estas
-                      movimentações para contar prazo.
-                    </small>
-                  </div>
-                )}
+                {consultaDatajud && renderCaixaDatajud(consultaDatajud)}
               </div>
               <div>
                 <label style={styles.label}>Título do Processo</label>
@@ -751,17 +816,132 @@ export default function Dashboard() {
 
       <div style={styles.column}>
         <h3 style={styles.tituloColunaVermelha}>⚠️ Piscina (Aguardando Adoção)</h3>
-        {piscinaProcessos.length > 0 ? piscinaProcessos.map((processo) => (
-          <div key={processo.id} style={styles.processCardOrphan}>
-            <h4 style={{ margin: "0 0 10px 0" }}>{processo.cnj}</h4>
-            <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Título:</strong> {processo.titulo}</p>
-            <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Cliente:</strong> {processo.cliente?.nome || "—"}</p>
-            <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Ação:</strong> {processo.tipo_processo}</p>
-            <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Tribunal:</strong> {processo.tribunal}</p>
-            <button onClick={() => handleAssumirProcesso(processo)} style={styles.btnAssumir}>Assumir Caso</button>
-          </div>
-        )) : <p style={{ color: "#666" }}>A piscina está vazia!</p>}
+        {piscinaProcessos.length > 0 ? piscinaProcessos.map((processo) => {
+          // O prazo da publicação manda no badge; sem publicação, vale o prazo inicial
+          const vencida = estimativaVencida(processo);
+          const infoPrazo = analisarPrazo(processo.prazo_estimado ?? processo.prazos?.[0]?.data_vencimento);
+          let corBadge = infoPrazo.cor;
+          let textoBadge = infoPrazo.texto;
+          if (vencida) {
+            // Laranja: venceu, mas há petição depois da publicação (talvez respondida)
+            corBadge = processo.peticao_apos_publicacao ? "#f39c12" : "#c0392b";
+            textoBadge = `Vencido há ${-infoPrazo.dias!} dias (estimado)`;
+          }
+          return (
+            <div key={processo.id} style={{ ...styles.processCardOrphan, borderLeft: `6px solid ${corBadge}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0 }}>{processo.cnj}</h4>
+                <span style={{ ...styles.badgePrazo, backgroundColor: corBadge + "20", color: corBadge === '#95a5a6' ? '#333' : corBadge, border: `1px solid ${corBadge}` }}>
+                  ⏳ {textoBadge}
+                </span>
+              </div>
+              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Título:</strong> {processo.titulo}</p>
+              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Cliente:</strong> {processo.cliente?.nome || "—"}</p>
+              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Ação:</strong> {processo.tipo_processo}</p>
+              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Tribunal:</strong> {processo.tribunal}</p>
+              {processo.classe && (
+                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
+                  {processo.classe}
+                  {processo.data_ajuizamento && ` · ajuizado em ${formatarDataSimples(processo.data_ajuizamento)}`}
+                </p>
+              )}
+              {processo.prazo_estimado && (
+                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
+                  Publicação de {formatarData(processo.data_publicacao_datajud)}: prazo {vencida ? "venceu" : "vence"} em {formatarData(processo.prazo_estimado)} (estimado)
+                </p>
+              )}
+              {vencida && processo.peticao_apos_publicacao && (
+                <p style={{ margin: "4px 0", fontSize: "13px", color: "#b9770e" }}>
+                  Há petição depois da publicação: pode já ter sido respondida.
+                </p>
+              )}
+              {processo.prazos?.[0] && (
+                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
+                  Prazo inicial: vence em {formatarData(processo.prazos[0].data_vencimento)}
+                </p>
+              )}
+              <button onClick={() => abrirPrevia(processo)} style={styles.btnAssumir}>Ver detalhes</button>
+            </div>
+          );
+        }) : <p style={{ color: "#666" }}>A piscina está vazia!</p>}
       </div>
+
+      {/* MODAL: PRÉVIA DO PROCESSO DA PISCINA */}
+      {processoEmPrevia && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h3 style={styles.modalTituloAzul}>{processoEmPrevia.titulo}</h3>
+            <p style={{ ...styles.textoSecundario, marginTop: 0 }}>CNJ {processoEmPrevia.cnj || "—"}</p>
+
+            <div style={styles.gridInfo}>
+              <div><span style={styles.label}>Cliente:</span><span style={styles.valor}>{processoEmPrevia.cliente?.nome || "—"}</span></div>
+              <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{processoEmPrevia.tipo_processo}</span></div>
+              <div><span style={styles.label}>Tribunal:</span><span style={styles.valor}>{processoEmPrevia.tribunal}</span></div>
+              <div><span style={styles.label}>Cadastrado:</span><span style={styles.valor}>
+                {/* data_cadastro vem em UTC sem fuso; o "Z" evita mostrar o dia seguinte depois das 21h */}
+                {new Date(processoEmPrevia.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por {processoEmPrevia.criador?.nome}
+              </span></div>
+            </div>
+
+            {processoEmPrevia.movimentacoes ? (
+              renderCaixaDatajud({ ...processoEmPrevia, atualizado_em: processoEmPrevia.datajud_atualizado_em })
+            ) : (
+              <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
+            )}
+            {processoEmPrevia.cnj && (
+              <button
+                onClick={handleAtualizarDatajud}
+                disabled={atualizandoDatajud}
+                style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
+              >
+                {atualizandoDatajud ? "Consultando..." : processoEmPrevia.movimentacoes ? "🔄 Atualizar dados do DataJud" : "🔎 Buscar no DataJud"}
+              </button>
+            )}
+
+            <div style={styles.subtituloDatajud}>Prazos</div>
+            <div style={{ fontSize: "13px" }}>
+              {processoEmPrevia.prazos.length > 0 ? processoEmPrevia.prazos.map((prazo: any) => (
+                <div key={prazo.id}>{prazo.descricao}: vence em {formatarData(prazo.data_vencimento)}</div>
+              )) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>}
+              {processoEmPrevia.prazo_estimado && (
+                <div>
+                  Estimado pela publicação de {formatarData(processoEmPrevia.data_publicacao_datajud)}:{" "}
+                  {estimativaVencida(processoEmPrevia) ? "venceu" : "vence"} em {formatarData(processoEmPrevia.prazo_estimado)}
+                </div>
+              )}
+            </div>
+
+            {estimativaVencida(processoEmPrevia) && (
+              <div style={{ ...styles.avisoInline, marginTop: "10px" }}>
+                {processoEmPrevia.peticao_apos_publicacao
+                  ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
+                  : "O prazo desta publicação já venceu. Confira no DJEN se houve resposta ou se existe publicação mais recente."}
+              </div>
+            )}
+
+            <div style={{ marginTop: "15px" }}>
+              <label style={styles.label}>Data da publicação no Diário (opcional)</label>
+              <input
+                type="date"
+                style={styles.input}
+                value={dataPublicacaoAssumir}
+                onChange={e => setDataPublicacaoAssumir(e.target.value)}
+              />
+              <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
+                {processoEmPrevia.data_publicacao_datajud && "Sugerida pela publicação encontrada no DataJud. "}
+                Confira no DJEN antes de assumir. Sem a data, vale o prazo inicial do escritório.
+              </div>
+            </div>
+
+            {erroPrevia && <div style={{ ...styles.avisoInline, marginTop: "10px" }}>{erroPrevia}</div>}
+
+            <div style={styles.linhaBotoes}>
+              <button onClick={() => setProcessoEmPrevia(null)} style={styles.btnCancelar}>Fechar</button>
+              <button onClick={handleAssumirProcesso} style={{ ...styles.btnSalvar, backgroundColor: "#c0392b" }}>Assumir Caso</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
