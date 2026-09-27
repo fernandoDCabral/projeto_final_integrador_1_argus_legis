@@ -9,16 +9,21 @@ de responsabilidade única, mas por hora ela está aqui para evitar duplicação
 código. Checar o Icebox, issue 'refactor(auth)', para mais detalhes.        
 """
 def verificar_acesso_ao_processo(
-        processo_id: int, 
-        usuario_id: int, 
+        processo_id: int,
+        usuario_id: int,
+        escritorio_id: int,
         db: Session
 ) -> None:
-    
+
     processo = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
-    if not processo:
+    # Processo de outro escritório deve ser indistinguível de processo
+    # inexistente: 404, nunca 403, senão dá pra confirmar por tentativa que
+    # um CNJ existe em outro escritório (mesmo cuidado do _buscar_no_escritorio
+    # em clientes.py)
+    if not processo or processo.escritorio_id != escritorio_id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Processo não encontrado!"
         )
 
