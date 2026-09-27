@@ -149,18 +149,26 @@ O dashboard só não quebra porque usa a listagem.
 Raiz do problema: `perfil` mistura duas perguntas independentes — *administro o
 escritório?* e *sou advogado?*. O sócio de escritório pequeno é os dois.
 
-### 10. `verificar_acesso_ao_processo` ainda não checa escritório
+### ✅ 10. `verificar_acesso_ao_processo` ainda não checava escritório — resolvido em 27/09/2026
 
-`app/utils/autorizacao.py` compara apenas `responsavel_id`. **Nunca compara
-`escritorio_id`.** E se `responsavel_id is None`, libera o acesso.
+`app/utils/autorizacao.py` comparava apenas `responsavel_id`, nunca `escritorio_id`.
+Se `responsavel_id is None`, liberava o acesso — o que é o estado normal de um
+processo recém-cadastrado ("pool"), não uma exceção.
 
-Um advogado do escritório A ainda consegue ler, editar, excluir e criar prazos em
-qualquer processo **sem responsável** de outro escritório, iterando IDs. Como o
-`ProcessoResponse` traz o `cliente` aninhado, vaza CPF, endereço e telefone de
-clientes de terceiros.
+Confirmado por exploit real (advogado autêntico do escritório B, IDs por
+tentativa): `GET`/`PATCH`/`DELETE /processos/{id}` e `POST/PATCH/DELETE
+/prazos/{id}` vazavam e permitiam editar/apagar processo (com CPF, endereço e
+telefone do cliente aninhados) e prazos sem responsável de qualquer outro
+escritório.
 
-> As correções de isolamento feitas até agora cobriram `/usuarios`, `/clientes` e
-> `/escritorios`. **Processos e prazos ainda não.**
+**Correção**: `verificar_acesso_ao_processo` agora recebe `escritorio_id` e
+responde 404 (nunca 403, pelo mesmo motivo do `_buscar_no_escritorio` em
+`clientes.py`) quando o processo não pertence ao escritório de quem pede — antes
+de checar `responsavel_id`. Os 8 call-sites em `processos.py` e `prazos.py`
+foram atualizados para passar `current_user.escritorio_id`.
+
+Reexecutei o exploit depois da correção: os quatro ataques agora voltam 404
+uniforme, e o processo do escritório A permanece intacto.
 
 ### 11. Zero testes
 
