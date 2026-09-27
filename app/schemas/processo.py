@@ -1,10 +1,11 @@
 from pydantic import BaseModel, ConfigDict, AfterValidator
 from typing import Optional
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Annotated
 from .usuario import UsuarioResponse
 from .cliente import ClienteResponse
 from .prazo import PrazoResponse
+from .datajud import MovimentacaoDatajud
 from ..utils.validators import padroniza_cnj
 
 CNJ = Annotated[str, AfterValidator(padroniza_cnj)]
@@ -19,6 +20,17 @@ class ProcessoBase(BaseModel):
     tribunal: Optional[str] = "TJCE"
     status: str = "Ativo"
     tipo_processo: str
+
+    # Vêm da consulta ao DataJud feita no cadastro; todos opcionais
+    classe: Optional[str] = None
+    orgao_julgador: Optional[str] = None
+    grau: Optional[str] = None
+    data_ajuizamento: Optional[date] = None
+    assuntos: Optional[List[str]] = None
+    movimentacoes: Optional[List[MovimentacaoDatajud]] = None
+    datajud_atualizado_em: Optional[datetime] = None
+    data_publicacao_datajud: Optional[date] = None
+    peticao_apos_publicacao: bool = False
 
 class ProcessoCreate(ProcessoBase):
     cliente_id: int
@@ -43,6 +55,7 @@ class ProcessoResponse(ProcessoBase):
     responsavel: Optional[UsuarioResponse] = None
     criador: UsuarioResponse
     prazos: List[PrazoResponse]
+    prazo_estimado: Optional[date] = None
     model_config = ConfigDict(from_attributes=True)
 
 class ProcessoPrazoMovimentacaoResponse(BaseModel):
