@@ -24,5 +24,11 @@ class ConsultaDatajudResponse(BaseModel):
     titulo_sugerido: Optional[str] = None
     tipo_processo_sugerido: Optional[str] = None
 
+    # Última publicação no Diário (CPC art. 224), já ajustada quando o
+    # tribunal só registrou a disponibilização. Nula se não houver nenhuma
+    data_publicacao: Optional[date] = None
+    # Indício (não prova) de que a publicação já foi respondida
+    peticao_apos_publicacao: bool = False
+
     # Da mais recente para a mais antiga
     movimentacoes: List[MovimentacaoDatajud]
