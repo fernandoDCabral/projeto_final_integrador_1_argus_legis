@@ -17,8 +17,9 @@ def criar_prazo(
     db: Session = Depends(database.get_db),
     current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
 ):
-    verificar_acesso_ao_processo(prazo.processo_id, current_user.id, db)
-    return prazo_service.criar_prazo(db, prazo)    
+    verificar_acesso_ao_processo(
+        prazo.processo_id, current_user.id, current_user.escritorio_id, db)
+    return prazo_service.criar_prazo(db, prazo)
 
 @router.patch("/{prazo_id}", response_model=schemas.PrazoResponse)
 def atualizar_status(
@@ -33,7 +34,8 @@ def atualizar_status(
     if not prazo_atual:
         raise HTTPException(status_code=404, detail="Prazo não encontrado!")
     
-    verificar_acesso_ao_processo(prazo_atual.processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        prazo_atual.processo_id, current_user.id, current_user.escritorio_id, db)
 
     return prazo_service.atualizar_prazo(db, prazo_atual, dados_atualizados)
 
@@ -49,7 +51,9 @@ def excluir_prazo(
         raise HTTPException(status_code=404, 
                             detail="Prazo não encontrado para exclusão!")
     
-    verificar_acesso_ao_processo(prazo_para_excluir.processo_id, current_user.id, db)
+    verificar_acesso_ao_processo(
+        prazo_para_excluir.processo_id, current_user.id,
+        current_user.escritorio_id, db)
 
     db.delete(prazo_para_excluir)
     db.commit()
