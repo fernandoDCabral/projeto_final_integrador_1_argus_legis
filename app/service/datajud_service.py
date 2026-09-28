@@ -22,7 +22,6 @@ FUSO_HORARIO_LOCAL = ZoneInfo("America/Sao_Paulo")
 TENTATIVAS = 3
 # Quem espera é o usuário com o modal aberto, então não adianta esperar muito
 TIMEOUT_SEGUNDOS = 20
-QTD_MOVIMENTACOES = 5
 # Mesmo limite da coluna processos.titulo — acima disso o cadastro daria erro
 TAMANHO_MAXIMO_TITULO = 100
 
@@ -266,7 +265,8 @@ def consultar_processo(cnj: str, db: Session) -> dict:
         "atualizado_em": _instante(processo.get("dataHoraUltimaAtualizacao")),
         "titulo_sugerido": _sugerir_titulo(classe, assuntos),
         "tipo_processo_sugerido": _sugerir_tipo_processo(int(digitos[13]), classe),
-        "movimentacoes": movimentacoes[:QTD_MOVIMENTACOES],
+        # Histórico completo; a tela decide quantas mostrar
+        "movimentacoes": movimentacoes,
         "data_publicacao": data_publicacao,
         "peticao_apos_publicacao": peticao_apos_publicacao,
     }

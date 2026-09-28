@@ -38,6 +38,10 @@ export default function Dashboard() {
   const [atualizandoDatajud, setAtualizandoDatajud] = useState(false);
   const [erroPrevia, setErroPrevia] = useState("");
 
+  // Tela "Meus Processos": lista e, ao escolher um, o processo completo
+  const [abaAdvogado, setAbaAdvogado] = useState<"painel" | "processos">("painel");
+  const [processoAberto, setProcessoAberto] = useState<any | null>(null);
+
   // Estados para o Admin
   const [abaAdmin, setAbaAdmin] = useState<AbaAdmin>("cadastro");
   const [advogados, setAdvogados] = useState<any[]>([]);
@@ -121,6 +125,12 @@ export default function Dashboard() {
     }
   }, [user]);
 
+  // Trocar de tela mantinha a rolagem da anterior e escondia o "Voltar".
+  // Depende só do id para não pular para o topo ao atualizar o DataJud
+  useEffect(() => {
+    document.querySelector("main")?.scrollTo(0, 0);
+  }, [abaAdvogado, processoAberto?.id]);
+
   // --- AÇÕES DO ADVOGADO ---
   const abrirPrevia = (processo: any) => {
     setProcessoEmPrevia(processo);
@@ -129,18 +139,30 @@ export default function Dashboard() {
     setErroPrevia("");
   };
 
-  const handleAtualizarDatajud = async () => {
+  // Chamada tanto pelo modal quanto pela tela do processo completo
+  const handleAtualizarDatajud = async (processo: any) => {
     setAtualizandoDatajud(true);
     setErroPrevia("");
     try {
-      const { data } = await api.post(`/processos/${processoEmPrevia.id}/datajud`);
-      abrirPrevia(data);
+      const { data } = await api.post(`/processos/${processo.id}/datajud`);
       setPiscinaProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
+      setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
+      if (processoEmPrevia) abrirPrevia(data);
+      if (processoAberto) setProcessoAberto(data);
     } catch (error) {
-      setErroPrevia(mensagemDeErro(error, "Não foi possível consultar o DataJud."));
+      const texto = mensagemDeErro(error, "Não foi possível consultar o DataJud.");
+      // No modal o aviso geral ficaria escondido atrás do overlay
+      if (processoEmPrevia) setErroPrevia(texto);
+      else setAviso({ tipo: "erro", texto });
     } finally {
       setAtualizandoDatajud(false);
     }
+  };
+
+  const abrirProcessoCompleto = (processo: any) => {
+    setProcessoEmPrevia(null);
+    setProcessoAberto(processo);
+    setAbaAdvogado("processos");
   };
 
   const handleAssumirProcesso = async () => {
@@ -347,6 +369,31 @@ export default function Dashboard() {
 
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
 
+  // Usada no modal do processo e na tela do processo completo
+  const renderListaPrazos = (prazos: any[]) => (
+    prazos.length > 0 ? prazos.map((prazo) => {
+      const infoPrazo = prazo.finalizado
+        ? { cor: "#95a5a6", texto: "Finalizado" }
+        : analisarPrazo(prazo.data_vencimento);
+      return (
+        <div key={prazo.id} style={{ border: "1px solid #eee", borderLeft: `4px solid ${infoPrazo.cor}`, padding: "8px", marginTop: "6px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+            <strong>{prazo.descricao}</strong>
+            <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
+              {infoPrazo.texto}
+            </span>
+          </div>
+          <div style={styles.textoSecundario}>
+            Vence em {formatarData(prazo.data_vencimento)} ·{" "}
+            {prazo.interno
+              ? "prazo inicial do escritório"
+              : `conta da publicação de ${formatarData(prazo.data_publicacao)}`}
+          </div>
+        </div>
+      );
+    }) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>
+  );
+
   // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
   const renderCaixaDatajud = (dados: Pick<ConsultaDatajud,
     "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em">) => (
@@ -367,7 +414,7 @@ export default function Dashboard() {
       <div style={styles.subtituloDatajud}>Últimas movimentações</div>
       {dados.movimentacoes.length > 0 ? (
         <ul style={styles.listaMovimentacoes}>
-          {dados.movimentacoes.map((mov, i) => (
+          {dados.movimentacoes.slice(0, 5).map((mov, i) => (
             <li key={i} style={styles.itemMovimentacao}>
               <span style={styles.dataMovimentacao}>
                 {formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}
@@ -787,6 +834,162 @@ export default function Dashboard() {
     </div>
   );
 
+  const renderAbaMeusProcessos = () => {
+    if (processoAberto) return renderProcessoCompleto(processoAberto);
+
+    return (
+      <div>
+        <div style={styles.cabecalhoAba}>
+          <h3 style={styles.tituloAba}>Meus Processos</h3>
+        </div>
+        <div style={styles.cardInfo}>
+          <table style={styles.tabela}>
+            <thead>
+              <tr style={styles.tabelaCabecalho}>
+                <th style={styles.th}>CNJ</th>
+                <th style={styles.th}>Título / Cliente</th>
+                <th style={styles.th}>Tribunal / Tipo</th>
+                <th style={styles.th}>Prazo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {meusProcessos.length > 0 ? meusProcessos.map(processo => {
+                const vencimento = processo.prazos?.[0]?.data_vencimento;
+                const infoPrazo = analisarPrazo(vencimento);
+                return (
+                  <tr
+                    key={processo.id}
+                    onClick={() => setProcessoAberto(processo)}
+                    style={{ ...styles.tabelaLinha, cursor: "pointer" }}
+                  >
+                    <td style={{ ...styles.td, fontWeight: "bold" }}>{processo.cnj || "—"}</td>
+                    <td style={styles.td}>
+                      <div>{processo.titulo}</div>
+                      <small style={styles.textoSecundario}>Cliente: {processo.cliente?.nome || "—"}</small>
+                    </td>
+                    <td style={styles.td}>
+                      <div>{processo.tribunal}</div>
+                      <small style={styles.textoSecundario}>{processo.tipo_processo}</small>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
+                        {infoPrazo.texto}
+                      </span>
+                      {vencimento && <div><small style={styles.textoSecundario}>{formatarData(vencimento)}</small></div>}
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan={4} style={styles.tdVazio}>Nenhum processo sob sua responsabilidade.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProcessoCompleto = (processo: any) => (
+    <div>
+      <button onClick={() => setProcessoAberto(null)} style={styles.btnMiniNeutro}>← Voltar para a lista</button>
+
+      <div style={{ ...styles.cabecalhoAba, marginTop: "15px" }}>
+        <div>
+          <h3 style={styles.tituloAba}>{processo.titulo}</h3>
+          <small style={styles.textoSecundario}>CNJ {processo.cnj || "—"}</small>
+        </div>
+        <span style={styles.badgeAtivo}>{processo.status}</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+        <div style={styles.cardInfo}>
+          <h4 style={styles.tituloSecao}>Dados do processo</h4>
+          <div style={styles.gridInfo}>
+            <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{processo.tipo_processo}</span></div>
+            <div><span style={styles.label}>Tribunal:</span><span style={styles.valor}>{processo.tribunal}</span></div>
+            <div><span style={styles.label}>Classe:</span><span style={styles.valor}>{processo.classe || "—"}</span></div>
+            <div><span style={styles.label}>Grau:</span><span style={styles.valor}>{processo.grau || "—"}</span></div>
+            <div><span style={styles.label}>Ajuizado em:</span><span style={styles.valor}>{processo.data_ajuizamento ? formatarDataSimples(processo.data_ajuizamento) : "—"}</span></div>
+            <div><span style={styles.label}>Cadastrado:</span><span style={styles.valor}>
+              {new Date(processo.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por {processo.criador?.nome}
+            </span></div>
+          </div>
+          <div style={{ fontSize: "14px", marginBottom: "6px" }}>
+            <span style={styles.label}>Órgão julgador:</span><span style={styles.valor}>{processo.orgao_julgador || "—"}</span>
+          </div>
+          <div style={{ fontSize: "14px" }}>
+            <span style={styles.label}>Assuntos:</span><span style={styles.valor}>{processo.assuntos?.length > 0 ? processo.assuntos.join(", ") : "—"}</span>
+          </div>
+        </div>
+
+        <div style={styles.cardInfo}>
+          <h4 style={styles.tituloSecao}>Cliente</h4>
+          <div style={styles.gridInfo}>
+            <div><span style={styles.label}>Nome:</span><span style={styles.valor}>{processo.cliente?.nome}</span></div>
+            <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{rotuloTipoPessoa(processo.cliente?.tipo_pessoa)}</span></div>
+            <div><span style={styles.label}>Documento:</span><span style={styles.valor}>{documentoDoCliente(processo.cliente)}</span></div>
+            <div><span style={styles.label}>Telefone:</span><span style={styles.valor}>{formatarTelefone(processo.cliente?.telefone || "")}</span></div>
+          </div>
+          <div style={{ fontSize: "14px", marginBottom: "6px" }}>
+            <span style={styles.label}>E-mail:</span><span style={styles.valor}>{processo.cliente?.email}</span>
+          </div>
+          <div style={{ fontSize: "14px" }}>
+            <span style={styles.label}>Endereço:</span><span style={styles.valor}>{processo.cliente?.endereco}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
+        <h4 style={styles.tituloSecao}>Prazos</h4>
+        {renderListaPrazos(processo.prazos)}
+      </div>
+
+      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h4 style={styles.tituloSecao}>
+            Histórico de movimentações{processo.movimentacoes ? ` (${processo.movimentacoes.length})` : ""}
+          </h4>
+          {processo.cnj && (
+            <button
+              onClick={() => handleAtualizarDatajud(processo)}
+              disabled={atualizandoDatajud}
+              style={styles.btnMiniNeutro}
+            >
+              {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "🔄 Atualizar dados do DataJud" : "🔎 Buscar no DataJud"}
+            </button>
+          )}
+        </div>
+
+        {processo.movimentacoes ? (
+          <>
+            {processo.movimentacoes.length > 0 ? (
+              <ul style={styles.listaMovimentacoes}>
+                {processo.movimentacoes.map((mov: any, i: number) => (
+                  <li key={i} style={styles.itemMovimentacao}>
+                    <span style={styles.dataMovimentacao}>
+                      {formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}
+                    </span>
+                    {mov.nome}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div style={styles.textoSecundario}>Nenhuma movimentação registrada.</div>
+            )}
+            <div style={{ ...styles.notaDatajud, marginTop: "10px", fontSize: "12px" }}>
+              Fonte: DataJud/CNJ
+              {processo.datajud_atualizado_em &&
+                `, atualizado em ${new Date(processo.datajud_atualizado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
+              . O CNJ recebe os dados dos tribunais com atraso: não use estas movimentações para contar prazo.
+            </div>
+          </>
+        ) : (
+          <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
+        )}
+      </div>
+    </div>
+  );
+
   const renderPainelAdvogado = () => (
     <div style={{ display: "flex", gap: "20px" }}>
       <div style={styles.column}>
@@ -795,7 +998,12 @@ export default function Dashboard() {
           const dataVencimentoReal = processo.prazos && processo.prazos.length > 0 ? processo.prazos[0].data_vencimento : undefined;
           const infoPrazo = analisarPrazo(dataVencimentoReal);
           return (
-            <div key={processo.id} style={{ ...styles.processCard, borderLeft: `6px solid ${infoPrazo.cor}` }}>
+            <div
+              key={processo.id}
+              onClick={() => abrirPrevia(processo)}
+              title="Ver resumo do processo"
+              style={{ ...styles.processCard, borderLeft: `6px solid ${infoPrazo.cor}`, cursor: "pointer" }}
+            >
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                   <h4 style={{ margin: 0, color: '#1a2a3a', fontSize: '1.1rem' }}>{processo.cnj}</h4>
                   <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
@@ -866,7 +1074,7 @@ export default function Dashboard() {
         }) : <p style={{ color: "#666" }}>A piscina está vazia!</p>}
       </div>
 
-      {/* MODAL: PRÉVIA DO PROCESSO DA PISCINA */}
+      {/* MODAL: PRÉVIA (PISCINA) OU RESUMO (MEUS PROCESSOS) */}
       {processoEmPrevia && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
@@ -890,7 +1098,7 @@ export default function Dashboard() {
             )}
             {processoEmPrevia.cnj && (
               <button
-                onClick={handleAtualizarDatajud}
+                onClick={() => handleAtualizarDatajud(processoEmPrevia)}
                 disabled={atualizandoDatajud}
                 style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
               >
@@ -900,18 +1108,17 @@ export default function Dashboard() {
 
             <div style={styles.subtituloDatajud}>Prazos</div>
             <div style={{ fontSize: "13px" }}>
-              {processoEmPrevia.prazos.length > 0 ? processoEmPrevia.prazos.map((prazo: any) => (
-                <div key={prazo.id}>{prazo.descricao}: vence em {formatarData(prazo.data_vencimento)}</div>
-              )) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>}
-              {processoEmPrevia.prazo_estimado && (
-                <div>
+              {renderListaPrazos(processoEmPrevia.prazos)}
+              {/* Estimativa só serve na piscina; depois de assumido vale o prazo oficial */}
+              {!processoEmPrevia.responsavel && processoEmPrevia.prazo_estimado && (
+                <div style={{ marginTop: "6px" }}>
                   Estimado pela publicação de {formatarData(processoEmPrevia.data_publicacao_datajud)}:{" "}
                   {estimativaVencida(processoEmPrevia) ? "venceu" : "vence"} em {formatarData(processoEmPrevia.prazo_estimado)}
                 </div>
               )}
             </div>
 
-            {estimativaVencida(processoEmPrevia) && (
+            {!processoEmPrevia.responsavel && estimativaVencida(processoEmPrevia) && (
               <div style={{ ...styles.avisoInline, marginTop: "10px" }}>
                 {processoEmPrevia.peticao_apos_publicacao
                   ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
@@ -919,25 +1126,31 @@ export default function Dashboard() {
               </div>
             )}
 
-            <div style={{ marginTop: "15px" }}>
-              <label style={styles.label}>Data da publicação no Diário (opcional)</label>
-              <input
-                type="date"
-                style={styles.input}
-                value={dataPublicacaoAssumir}
-                onChange={e => setDataPublicacaoAssumir(e.target.value)}
-              />
-              <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
-                {processoEmPrevia.data_publicacao_datajud && "Sugerida pela publicação encontrada no DataJud. "}
-                Confira no DJEN antes de assumir. Sem a data, vale o prazo inicial do escritório.
+            {!processoEmPrevia.responsavel && (
+              <div style={{ marginTop: "15px" }}>
+                <label style={styles.label}>Data da publicação no Diário (opcional)</label>
+                <input
+                  type="date"
+                  style={styles.input}
+                  value={dataPublicacaoAssumir}
+                  onChange={e => setDataPublicacaoAssumir(e.target.value)}
+                />
+                <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
+                  {processoEmPrevia.data_publicacao_datajud && "Sugerida pela publicação encontrada no DataJud. "}
+                  Confira no DJEN antes de assumir. Sem a data, vale o prazo inicial do escritório.
+                </div>
               </div>
-            </div>
+            )}
 
             {erroPrevia && <div style={{ ...styles.avisoInline, marginTop: "10px" }}>{erroPrevia}</div>}
 
             <div style={styles.linhaBotoes}>
               <button onClick={() => setProcessoEmPrevia(null)} style={styles.btnCancelar}>Fechar</button>
-              <button onClick={handleAssumirProcesso} style={{ ...styles.btnSalvar, backgroundColor: "#c0392b" }}>Assumir Caso</button>
+              {processoEmPrevia.responsavel ? (
+                <button onClick={() => abrirProcessoCompleto(processoEmPrevia)} style={{ ...styles.btnSalvar, backgroundColor: "#1a2a3a" }}>Abrir processo completo</button>
+              ) : (
+                <button onClick={handleAssumirProcesso} style={{ ...styles.btnSalvar, backgroundColor: "#c0392b" }}>Assumir Caso</button>
+              )}
             </div>
           </div>
         </div>
@@ -968,7 +1181,17 @@ export default function Dashboard() {
                 </li>
               </>
             ) : (
-              <li style={styles.menuItemAtivo}>📂 Meus Processos</li>
+              <>
+                <li onClick={() => setAbaAdvogado("painel")} style={abaAdvogado === "painel" ? styles.menuItemAtivo : styles.menuItemInativo}>
+                  📋 Painel
+                </li>
+                <li
+                  onClick={() => { setAbaAdvogado("processos"); setProcessoAberto(null); }}
+                  style={abaAdvogado === "processos" ? styles.menuItemAtivo : styles.menuItemInativo}
+                >
+                  📂 Meus Processos
+                </li>
+              </>
             )}
           </ul>
         </div>
@@ -1001,7 +1224,9 @@ export default function Dashboard() {
           {carregando ? (
             <p>Carregando painel...</p>
           ) : (
-            user?.perfil === "ADMIN" ? renderPainelAdmin() : renderPainelAdvogado()
+            user?.perfil === "ADMIN" ? renderPainelAdmin()
+              : abaAdvogado === "processos" ? renderAbaMeusProcessos()
+              : renderPainelAdvogado()
           )}
         </section>
       </main>
@@ -1023,7 +1248,8 @@ const styles = {
   cardInfo: { backgroundColor: "white", padding: "20px", borderRadius: "8px", border: "1px solid #ddd" },
   column: { flex: 1, backgroundColor: "white", padding: "20px", borderRadius: "8px", border: "1px solid #ddd", minHeight: "400px" },
   tituloColunaAzul: { color: "#1a2a3a", borderBottom: "2px solid #D4AF37", paddingBottom: "10px", marginTop: 0 },
-  tituloColunaVermelha: { color: "#c0392b", borderBottom: "2px solid #c0392b", paddingBottom: "10px", marginTop: 0 },
+  tituloSecao: { color: "#1a2a3a", borderBottom: "2px solid #D4AF37", paddingBottom: "8px", marginTop: 0, fontSize: "16px" },
+  tituloColunaVermelha:{ color: "#c0392b", borderBottom: "2px solid #c0392b", paddingBottom: "10px", marginTop: 0 },
   processCard: { borderTop: "1px solid #eee", borderRight: "1px solid #eee", borderBottom: "1px solid #eee", padding: "15px", borderRadius: "8px", marginBottom: "15px", backgroundColor: "#fff", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" },
   processCardOrphan: { border: "1px solid #ffdce0", padding: "15px", borderRadius: "8px", marginBottom: "15px", backgroundColor: "#fff5f5", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" },
   badgePrazo: { fontSize: "12px", padding: "4px 8px", borderRadius: "12px", fontWeight: "bold" as const, whiteSpace: "nowrap" as const },
