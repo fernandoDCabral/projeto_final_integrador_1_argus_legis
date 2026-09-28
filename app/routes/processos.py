@@ -177,6 +177,8 @@ def atualizar_dados_datajud(
         processo_id, current_user.id, current_user.escritorio_id, db)
     processo = db.query(models.Processo).filter(
         models.Processo.id == processo_id).first()
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado!")
 
     if not processo.cnj:
         raise HTTPException(
