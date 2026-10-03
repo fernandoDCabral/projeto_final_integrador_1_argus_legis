@@ -171,18 +171,14 @@ export default function Dashboard() {
     try {
       await api.patch(`/processos/${processo.id}`, { responsavel_id: user?.id });
 
-      // Processos antigos foram cadastrados sem o prazo inicial
-      if (processo.prazos.length === 0) {
+      // Prazo só nasce da publicação (Spec 002). Sempre cria um novo: o
+      // prazos[0] pode ser um Prazo Inicial antigo, já finalizado
+      if (dataPublicacaoAssumir) {
         await api.post('/prazos/', {
           processo_id: processo.id,
-          descricao: `Prazo Inicial (${processo.tipo_processo})`,
-          data_publicacao: dataPublicacaoAssumir || null,
+          descricao: `Prazo da publicação (${processo.tipo_processo})`,
+          data_publicacao: dataPublicacaoAssumir,
           finalizado: false
-        });
-      } else if (dataPublicacaoAssumir) {
-        // Com a publicação, o prazo passa a contar pelos dias do tipo do processo
-        await api.patch(`/prazos/${processo.prazos[0].id}`, {
-          data_publicacao: dataPublicacaoAssumir
         });
       }
 
@@ -371,6 +367,18 @@ export default function Dashboard() {
   const estimativaVencida = (processo: any) =>
     !!processo.prazo_estimado && analisarPrazo(processo.prazo_estimado).dias! < 0;
 
+  // Depois disso a estimativa vencida só faz ruído: vira "sem prazo em aberto" (Spec 002)
+  const DIAS_ALERTA_ESTIMATIVA = 30;
+  const estimativaAntiga = (processo: any) =>
+    estimativaVencida(processo) && -analisarPrazo(processo.prazo_estimado).dias! > DIAS_ALERTA_ESTIMATIVA;
+
+  // Prazo que ainda conta: o aberto que vence primeiro. Os Prazos Iniciais
+  // antigos ficaram finalizados e não entram (Spec 002)
+  const prazoAberto = (processo: any) =>
+    (processo.prazos ?? [])
+      .filter((prazo: any) => !prazo.finalizado)
+      .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento))[0];
+
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
 
   // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
@@ -397,7 +405,7 @@ export default function Dashboard() {
           <div style={styles.textoSecundario}>
             Vence em {formatarData(prazo.data_vencimento)} ·{" "}
             {prazo.interno
-              ? "prazo inicial do escritório"
+              ? "prazo inicial antigo (contava do cadastro)"
               : `conta da publicação de ${formatarData(prazo.data_publicacao)}`}
           </div>
         </div>
@@ -874,7 +882,7 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {meusProcessos.length > 0 ? meusProcessos.map(processo => {
-                const vencimento = processo.prazos?.[0]?.data_vencimento;
+                const vencimento = prazoAberto(processo)?.data_vencimento;
                 const infoPrazo = analisarPrazo(vencimento);
                 return (
                   <tr
@@ -1019,7 +1027,7 @@ export default function Dashboard() {
       <div style={styles.column}>
         <h3 style={styles.tituloColunaAzul}>📋 Meus Processos Ativos</h3>
         {meusProcessos.filter(p => p.status !== "Encerrado").length > 0 ? meusProcessos.filter(p => p.status !== "Encerrado").map((processo) => {
-          const dataVencimentoReal = processo.prazos && processo.prazos.length > 0 ? processo.prazos[0].data_vencimento : undefined;
+          const dataVencimentoReal = prazoAberto(processo)?.data_vencimento;
           const infoPrazo = analisarPrazo(dataVencimentoReal);
           return (
             <div
@@ -1049,12 +1057,17 @@ export default function Dashboard() {
       <div style={styles.column}>
         <h3 style={styles.tituloColunaVermelha}>⚠️ Piscina (Aguardando Adoção)</h3>
         {piscinaProcessos.length > 0 ? piscinaProcessos.map((processo) => {
-          // O prazo da publicação manda no badge; sem publicação, vale o prazo inicial
+          // Na piscina só existe a estimativa pela publicação do DataJud (Spec 002)
           const vencida = estimativaVencida(processo);
-          const infoPrazo = analisarPrazo(processo.prazo_estimado ?? processo.prazos?.[0]?.data_vencimento);
+          const antiga = estimativaAntiga(processo);
+          const infoPrazo = analisarPrazo(processo.prazo_estimado);
           let corBadge = infoPrazo.cor;
-          let textoBadge = infoPrazo.texto;
-          if (vencida) {
+          let textoBadge = processo.prazo_estimado ? infoPrazo.texto : "Sem prazo aberto";
+          if (antiga) {
+            // Mais de 30 dias vencida: cinza, sem alarme
+            corBadge = "#95a5a6";
+            textoBadge = `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao_datajud)})`;
+          } else if (vencida) {
             // Laranja: venceu, mas há petição depois da publicação (talvez respondida)
             corBadge = processo.peticao_apos_publicacao ? "#f39c12" : "#c0392b";
             textoBadge = `Vencido há ${-infoPrazo.dias!} dias (estimado)`;
@@ -1082,14 +1095,9 @@ export default function Dashboard() {
                   Publicação de {formatarData(processo.data_publicacao_datajud)}: prazo {vencida ? "venceu" : "vence"} em {formatarData(processo.prazo_estimado)} (estimado)
                 </p>
               )}
-              {vencida && processo.peticao_apos_publicacao && (
+              {vencida && !antiga && processo.peticao_apos_publicacao && (
                 <p style={{ margin: "4px 0", fontSize: "13px", color: "#b9770e" }}>
                   Há petição depois da publicação: pode já ter sido respondida.
-                </p>
-              )}
-              {processo.prazos?.[0] && (
-                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
-                  Prazo inicial: vence em {formatarData(processo.prazos[0].data_vencimento)}
                 </p>
               )}
               <button onClick={() => abrirPrevia(processo)} style={styles.btnAssumir}>Ver detalhes</button>
@@ -1142,7 +1150,14 @@ export default function Dashboard() {
               )}
             </div>
 
-            {!processoEmPrevia.responsavel && estimativaVencida(processoEmPrevia) && (
+            {!processoEmPrevia.responsavel && estimativaAntiga(processoEmPrevia) && (
+              <div style={{ ...styles.textoSecundario, marginTop: "10px" }}>
+                A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.
+                Confira no DJEN se existe publicação mais recente.
+              </div>
+            )}
+
+            {!processoEmPrevia.responsavel && estimativaVencida(processoEmPrevia) && !estimativaAntiga(processoEmPrevia) && (
               <div style={{ ...styles.avisoInline, marginTop: "10px" }}>
                 {processoEmPrevia.peticao_apos_publicacao
                   ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
@@ -1161,7 +1176,7 @@ export default function Dashboard() {
                 />
                 <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
                   {processoEmPrevia.data_publicacao_datajud && "Sugerida pela publicação encontrada no DataJud. "}
-                  Confira no DJEN antes de assumir. Sem a data, vale o prazo inicial do escritório.
+                  Confira no DJEN antes de assumir. Sem a data, o processo fica sem prazo até você informar a publicação.
                 </div>
               </div>
             )}
