@@ -24,3 +24,4 @@ pergunta o que falta e preenche o modelo.
 | Nº | Spec | Status |
 |----|------|--------|
 | 001 | [Detectar processo encerrado](001-detectar-processo-encerrado.md) | Implementada |
+| 002 | [Revisão da contagem de prazos](002-revisao-contagem-prazos.md) | Implementada |

@@ -63,11 +63,3 @@ class ProcessoResponse(ProcessoBase):
     prazos: List[PrazoResponse]
     prazo_estimado: Optional[date] = None
     model_config = ConfigDict(from_attributes=True)
-
-class ProcessoPrazoMovimentacaoResponse(BaseModel):
-    processo_id: int
-    tipo_processo: str
-    prazo_dias: int
-    data_cadastro: datetime
-    data_limite: datetime
-    dias_restantes: int
