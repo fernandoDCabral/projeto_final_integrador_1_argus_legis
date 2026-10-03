@@ -53,6 +53,8 @@ def criar_processo(
     dados_processo["movimentacoes"] = processo.model_dump(mode="json")["movimentacoes"]
 
     novo_processo = models.Processo(**dados_processo)
+    # O status vem do DataJud, não do que foi digitado (Spec 001)
+    novo_processo.status = "Encerrado" if novo_processo.encerrado_em else "Ativo"
     if novo_processo.data_publicacao_datajud:
         novo_processo.prazo_estimado = prazo_service.calcular_data_vencimento(
             db, novo_processo.data_publicacao_datajud, novo_processo.tipo_processo)
@@ -198,6 +200,9 @@ def atualizar_dados_datajud(
     processo.datajud_atualizado_em = consulta.atualizado_em
     processo.data_publicacao_datajud = consulta.data_publicacao
     processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
+    # Pode encerrar ou voltar a ficar ativo, se o processo foi reativado
+    processo.encerrado_em = consulta.encerrado_em
+    processo.status = "Encerrado" if consulta.encerrado_em else "Ativo"
     processo.prazo_estimado = None
     if consulta.data_publicacao:
         processo.prazo_estimado = prazo_service.calcular_data_vencimento(
