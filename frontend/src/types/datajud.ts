@@ -19,4 +19,5 @@ export interface ConsultaDatajud {
   movimentacoes: MovimentacaoDatajud[];
   data_publicacao: string | null;
   peticao_apos_publicacao: boolean;
+  encerrado_em: string | null; // arquivamento definitivo (Spec 001)
 }
