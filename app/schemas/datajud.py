@@ -29,6 +29,8 @@ class ConsultaDatajudResponse(BaseModel):
     data_publicacao: Optional[date] = None
     # Indício (não prova) de que a publicação já foi respondida
     peticao_apos_publicacao: bool = False
+    # Data do arquivamento definitivo; nula se o processo não acabou (Spec 001)
+    encerrado_em: Optional[date] = None
 
     # Da mais recente para a mais antiga
     movimentacoes: List[MovimentacaoDatajud]
