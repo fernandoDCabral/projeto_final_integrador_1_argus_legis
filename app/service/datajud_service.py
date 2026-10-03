@@ -45,6 +45,14 @@ CODIGO_PUBLICACAO = 92
 CODIGO_DISPONIBILIZACAO_DJE = 1061
 CODIGO_PETICAO = 85
 
+# Movimentos que dizem se o processo acabou (Spec 001). O processo pode voltar
+# depois do arquivamento, por exemplo para o cumprimento de sentença
+CODIGO_ARQUIVAMENTO_DEFINITIVO = 246
+CODIGO_REATIVACAO = 849
+CODIGO_DESARQUIVAMENTO = 893
+# No 2º grau o arquivamento só devolve o processo para a origem, que continua
+GRAUS_DE_ORIGEM = ("G1", "JE")
+
 PALAVRAS_CRIMINAIS =("penal", "criminal", "inquérito", "termo circunstanciado")
 PALAVRAS_CIVEIS = ("cível", "civel")
 
@@ -254,6 +262,32 @@ def consultar_processo(cnj: str, db: Session) -> dict:
     if data_publicacao is None:
         peticao_apos_publicacao = False
 
+    # Encerrado = o último arquivamento definitivo é mais recente que a última
+    # reativação ou desarquivamento. Olha todos os registros de 1º grau e
+    # Juizado, não só o que vai para a tela. Empate (mesmo dia, sem horário)
+    # fica como ativo: na dúvida, não esconde o processo
+    ultimo_arquivamento = None
+    ultima_reabertura = None
+    for registro in registros:
+        if registro["_source"].get("grau") not in GRAUS_DE_ORIGEM:
+            continue
+        for movimento in registro["_source"].get("movimentos", []):
+            mov = _movimentacao(movimento)
+            if not mov:
+                continue
+            if mov["codigo"] == CODIGO_ARQUIVAMENTO_DEFINITIVO:
+                if ultimo_arquivamento is None or mov["momento"] > ultimo_arquivamento["momento"]:
+                    ultimo_arquivamento = mov
+            if mov["codigo"] in (CODIGO_REATIVACAO, CODIGO_DESARQUIVAMENTO):
+                if ultima_reabertura is None or mov["momento"] > ultima_reabertura:
+                    ultima_reabertura = mov["momento"]
+
+    encerrado_em = None
+    if ultimo_arquivamento and (
+        ultima_reabertura is None or ultimo_arquivamento["momento"] > ultima_reabertura
+    ):
+        encerrado_em = ultimo_arquivamento["data"]
+
     return {
         "cnj": digitos,
         "tribunal": processo.get("tribunal") or indice.upper(),
@@ -269,4 +303,5 @@ def consultar_processo(cnj: str, db: Session) -> dict:
         "movimentacoes": movimentacoes,
         "data_publicacao": data_publicacao,
         "peticao_apos_publicacao": peticao_apos_publicacao,
+        "encerrado_em": encerrado_em,
     }

@@ -109,7 +109,8 @@ export default function Dashboard() {
         const response = await api.get('/processos/');
         const todosProcessos = response.data;
         setMeusProcessos(todosProcessos.filter((p: any) => p.responsavel?.id === user?.id));
-        setPiscinaProcessos(todosProcessos.filter((p: any) => p.responsavel === null));
+        // Processo encerrado não está esperando ninguém assumir
+        setPiscinaProcessos(todosProcessos.filter((p: any) => p.responsavel === null && p.status !== "Encerrado"));
       }
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
@@ -320,12 +321,15 @@ export default function Dashboard() {
           datajud_atualizado_em: consultaDatajud.atualizado_em,
           data_publicacao_datajud: consultaDatajud.data_publicacao,
           peticao_apos_publicacao: consultaDatajud.peticao_apos_publicacao,
+          encerrado_em: consultaDatajud.encerrado_em,
         })
       });
 
       setAviso({
         tipo: "sucesso",
-        texto: "Processo cadastrado e enviado para a piscina!"
+        texto: consultaDatajud?.encerrado_em
+          ? "Processo cadastrado como encerrado (não vai para a piscina)."
+          : "Processo cadastrado e enviado para a piscina!"
       });
       fecharModalProcesso();
       await carregarDados();
@@ -369,6 +373,13 @@ export default function Dashboard() {
 
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
 
+  // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
+  const renderSeloStatus = (processo: any) => (
+    processo.status === "Encerrado"
+      ? <span style={styles.badgeEncerrado}>Encerrado em {formatarData(processo.encerrado_em)}</span>
+      : <span style={styles.badgeAtivo}>{processo.status}</span>
+  );
+
   // Usada no modal do processo e na tela do processo completo
   const renderListaPrazos = (prazos: any[]) => (
     prazos.length > 0 ? prazos.map((prazo) => {
@@ -396,9 +407,14 @@ export default function Dashboard() {
 
   // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
   const renderCaixaDatajud = (dados: Pick<ConsultaDatajud,
-    "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em">) => (
+    "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em" | "encerrado_em">) => (
     <div style={styles.caixaDatajud}>
       <strong>{dados.classe ?? "Processo encontrado"}</strong>
+      {dados.encerrado_em && (
+        <div style={{ margin: "4px 0" }}>
+          <span style={styles.badgeEncerrado}>Encerrado em {formatarData(dados.encerrado_em)}</span>
+        </div>
+      )}
       <div style={styles.textoSecundario}>
         {[dados.orgao_julgador, dados.grau].filter(Boolean).join(" · ")}
       </div>
@@ -590,6 +606,7 @@ export default function Dashboard() {
                   ) : (
                     <span style={styles.badgePiscina}>⚠️ Aguardando Adoção</span>
                   )}
+                  {proc.status === "Encerrado" && <div style={{ marginTop: "4px" }}>{renderSeloStatus(proc)}</div>}
                 </td>
               </tr>
             )) : (
@@ -819,10 +836,13 @@ export default function Dashboard() {
                   type="submit"
                   style={{
                     ...styles.btnSalvar,
-                    backgroundColor: clientes.length > 0 ? "#c0392b" : "#bdc3c7",
-                    cursor: clientes.length > 0 ? "pointer" : "not-allowed"
+                    backgroundColor: clientes.length > 0 && consultaDatajud ? "#c0392b" : "#bdc3c7",
+                    cursor: clientes.length > 0 && consultaDatajud ? "pointer" : "not-allowed"
                   }}
-                  disabled={clientes.length === 0}
+                  // Só entra processo que o DataJud achou (Spec 001). Mudar o
+                  // CNJ apaga a consulta, então trava de novo
+                  disabled={clientes.length === 0 || !consultaDatajud}
+                  title={!consultaDatajud ? "Busque o processo no DataJud antes de cadastrar" : undefined}
                 >
                   Cadastrar Processo
                 </button>
@@ -872,10 +892,14 @@ export default function Dashboard() {
                       <small style={styles.textoSecundario}>{processo.tipo_processo}</small>
                     </td>
                     <td style={styles.td}>
-                      <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
-                        {infoPrazo.texto}
-                      </span>
-                      {vencimento && <div><small style={styles.textoSecundario}>{formatarData(vencimento)}</small></div>}
+                      {processo.status === "Encerrado" ? renderSeloStatus(processo) : (
+                        <>
+                          <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
+                            {infoPrazo.texto}
+                          </span>
+                          {vencimento && <div><small style={styles.textoSecundario}>{formatarData(vencimento)}</small></div>}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -898,7 +922,7 @@ export default function Dashboard() {
           <h3 style={styles.tituloAba}>{processo.titulo}</h3>
           <small style={styles.textoSecundario}>CNJ {processo.cnj || "—"}</small>
         </div>
-        <span style={styles.badgeAtivo}>{processo.status}</span>
+        {renderSeloStatus(processo)}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
@@ -994,7 +1018,7 @@ export default function Dashboard() {
     <div style={{ display: "flex", gap: "20px" }}>
       <div style={styles.column}>
         <h3 style={styles.tituloColunaAzul}>📋 Meus Processos Ativos</h3>
-        {meusProcessos.length > 0 ? meusProcessos.map((processo) => {
+        {meusProcessos.filter(p => p.status !== "Encerrado").length > 0 ? meusProcessos.filter(p => p.status !== "Encerrado").map((processo) => {
           const dataVencimentoReal = processo.prazos && processo.prazos.length > 0 ? processo.prazos[0].data_vencimento : undefined;
           const infoPrazo = analisarPrazo(dataVencimentoReal);
           return (
@@ -1257,6 +1281,7 @@ const styles = {
   label: { color: "#666", marginRight: "5px" },
   valor: { fontWeight: "bold", color: "#333" },
   badgeAtivo: { display: "inline-block", backgroundColor: "#e8f5e9", color: "#2e7d32", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const },
+  badgeEncerrado: { display: "inline-block", backgroundColor: "#ecf0f1", color: "#555", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #bdc3c7" },
   badgePiscina: { display: "inline-block", backgroundColor: "#fff5f5", color: "#c0392b", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #ffdce0" },
   btnAssumir: { marginTop: "10px", backgroundColor: "#c0392b", color: "white", border: "none", padding: "8px 15px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" },
   btnAcaoBase: { backgroundColor: "#1a2a3a", color: "white", border: "none", padding: "10px 20px", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" as const },

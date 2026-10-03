@@ -34,6 +34,8 @@ class Processo(Base):
     data_publicacao_datajud: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     prazo_estimado: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     peticao_apos_publicacao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Data do arquivamento definitivo no DataJud. Preenchida = processo encerrado
+    encerrado_em: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     #Foreign keys
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"))
