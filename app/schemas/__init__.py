@@ -11,4 +11,5 @@ from .recuperacao import (
     RedefinirSenhaRequest,
 )
 from .datajud import MovimentacaoDatajud, ConsultaDatajudResponse
+from .documento import DocumentoResponse
 from .processo import ProcessoBase,ProcessoCreate,ProcessoUpdate,ProcessoResponse

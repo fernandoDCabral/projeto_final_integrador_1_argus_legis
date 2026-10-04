@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .cliente import Cliente
     from .usuario import Usuario
     from .prazo import Prazo
+    from .documento import Documento
 
 class Processo(Base):
     __tablename__ = "processos"
@@ -48,6 +49,11 @@ class Processo(Base):
     cliente: Mapped["Cliente"] = relationship(back_populates="processos")
     prazos: Mapped[list["Prazo"]] = relationship(
         back_populates="processo", 
+        cascade="all, delete-orphan"
+    )
+    # Apagar o processo apaga as peças junto (Spec 003)
+    documentos: Mapped[list["Documento"]] = relationship(
+        back_populates="processo",
         cascade="all, delete-orphan"
     )
     responsavel: Mapped["Usuario"] = relationship(

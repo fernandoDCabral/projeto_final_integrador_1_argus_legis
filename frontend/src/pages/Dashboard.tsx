@@ -16,6 +16,9 @@ import {
 type AbaAdmin = "cadastro" | "clientes" | "processos";
 type Aviso = { tipo: "sucesso" | "erro"; texto: string } | null;
 
+// Mesma lista fixa do backend (app/routes/documentos.py) — Spec 003
+const TIPOS_DOCUMENTO = ["Petição inicial", "Contestação", "Réplica", "Recurso", "Petição (outras)"];
+
 const FORM_CLIENTE_VAZIO = {
   nome: "",
   tipo_pessoa: "FISICA" as TipoPessoa,
@@ -41,6 +44,17 @@ export default function Dashboard() {
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
   const [abaAdvogado, setAbaAdvogado] = useState<"painel" | "processos">("painel");
   const [processoAberto, setProcessoAberto] = useState<any | null>(null);
+
+  // Peças do processo aberto na prévia ou no processo completo (Spec 003)
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [tipoDocumento, setTipoDocumento] = useState("");
+  const [arquivoDocumento, setArquivoDocumento] = useState<File | null>(null);
+  const [enviandoDocumento, setEnviandoDocumento] = useState(false);
+  const [erroDocumento, setErroDocumento] = useState("");
+  // Confirmação de exclusão na própria linha, como nos clientes
+  const [documentoParaApagar, setDocumentoParaApagar] = useState<number | null>(null);
+  // Tabela do ADMIN: processo com a lista de peças aberta embaixo da linha
+  const [processoPecasAdmin, setProcessoPecasAdmin] = useState<number | null>(null);
 
   // Estados para o Admin
   const [abaAdmin, setAbaAdmin] = useState<AbaAdmin>("cadastro");
@@ -132,6 +146,18 @@ export default function Dashboard() {
     document.querySelector("main")?.scrollTo(0, 0);
   }, [abaAdvogado, processoAberto?.id]);
 
+  // Carrega as peças do processo aberto (o completo tem prioridade sobre a prévia)
+  const idProcessoComPecas = processoAberto?.id ?? processoEmPrevia?.id ?? processoPecasAdmin;
+  useEffect(() => {
+    setDocumentos([]);
+    setErroDocumento("");
+    setDocumentoParaApagar(null);
+    if (!idProcessoComPecas) return;
+    api.get(`/processos/${idProcessoComPecas}/documentos`)
+      .then(({ data }) => setDocumentos(data))
+      .catch(error => setErroDocumento(mensagemDeErro(error, "Não foi possível carregar as peças.")));
+  }, [idProcessoComPecas]);
+
   // --- AÇÕES DO ADVOGADO ---
   const abrirPrevia = (processo: any) => {
     setProcessoEmPrevia(processo);
@@ -157,6 +183,59 @@ export default function Dashboard() {
       else setAviso({ tipo: "erro", texto });
     } finally {
       setAtualizandoDatajud(false);
+    }
+  };
+
+  const handleEnviarDocumento = async (processo: any) => {
+    if (!tipoDocumento || !arquivoDocumento) {
+      setErroDocumento("Escolha o tipo da peça e o arquivo PDF.");
+      return;
+    }
+    const dados = new FormData();
+    dados.append("tipo", tipoDocumento);
+    dados.append("arquivo", arquivoDocumento);
+    setEnviandoDocumento(true);
+    setErroDocumento("");
+    try {
+      // A api usa JSON por padrão; aqui o corpo é arquivo
+      const { data } = await api.post(`/processos/${processo.id}/documentos`, dados, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setDocumentos(lista => [data, ...lista]);
+      setTipoDocumento("");
+      setArquivoDocumento(null);
+    } catch (error) {
+      setErroDocumento(mensagemDeErro(error, "Não foi possível enviar a peça."));
+    } finally {
+      setEnviandoDocumento(false);
+    }
+  };
+
+  // Baixa com o token do usuário e entrega ao navegador com o nome original
+  const handleBaixarDocumento = async (documento: any) => {
+    setErroDocumento("");
+    try {
+      const { data } = await api.get(`/documentos/${documento.id}/arquivo`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = documento.nome_arquivo;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setErroDocumento(mensagemDeErro(error, "Não foi possível baixar a peça."));
+    }
+  };
+
+  const handleApagarDocumento = async (documentoId: number) => {
+    setErroDocumento("");
+    try {
+      await api.delete(`/documentos/${documentoId}`);
+      setDocumentos(lista => lista.filter(d => d.id !== documentoId));
+    } catch (error) {
+      setErroDocumento(mensagemDeErro(error, "Não foi possível apagar a peça."));
+    } finally {
+      setDocumentoParaApagar(null);
     }
   };
 
@@ -388,6 +467,75 @@ export default function Dashboard() {
       : <span style={styles.badgeAtivo}>{processo.status}</span>
   );
 
+  const formatarTamanho = (bytes: number) =>
+    bytes < 1024 * 1024
+      ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+      : `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+
+  // Peças do processo (Spec 003). Na prévia só a lista; no processo completo,
+  // o responsável também baixa, apaga e envia
+  const renderPecas = (processo: any, completo: boolean) => {
+    const ehResponsavel = processo.responsavel?.id === user?.id;
+    const ehAdmin = user?.perfil === "ADMIN";
+    // Enviar e apagar: só o responsável. Baixar: o responsável e o ADMIN
+    const podeMexer = completo && ehResponsavel;
+    const podeBaixar = podeMexer || ehAdmin;
+    return (
+      <div>
+        {documentos.length > 0 ? documentos.map(documento => (
+          <div key={documento.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", border: "1px solid #eee", padding: "8px", marginTop: "6px" }}>
+            <div>
+              <strong>📄 {documento.tipo}</strong>
+              <div style={styles.textoSecundario}>
+                {documento.nome_arquivo} · {documento.paginas} {documento.paginas === 1 ? "página" : "páginas"} · {formatarTamanho(documento.tamanho)} · {new Date(documento.enviado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+              </div>
+            </div>
+            {podeBaixar && (
+              <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                {documentoParaApagar === documento.id ? (
+                  <>
+                    <button onClick={() => handleApagarDocumento(documento.id)} style={{ ...styles.btnMiniNeutro, color: "#c0392b" }}>Confirmar</button>
+                    <button onClick={() => setDocumentoParaApagar(null)} style={styles.btnMiniNeutro}>Cancelar</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => handleBaixarDocumento(documento)} style={styles.btnMiniNeutro}>⬇️ Baixar</button>
+                    {podeMexer && (
+                      <button onClick={() => setDocumentoParaApagar(documento.id)} style={styles.btnMiniNeutro}>🗑️ Apagar</button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )) : <div style={styles.textoSecundario}>Nenhuma peça enviada.</div>}
+
+        {!completo && documentos.length > 0 && !ehResponsavel && !ehAdmin && (
+          <div style={{ ...styles.textoSecundario, marginTop: "6px", fontSize: "12px" }}>
+            O conteúdo das peças abre depois de assumir o processo.
+          </div>
+        )}
+
+        {podeMexer && (
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginTop: "12px" }}>
+            <select style={{ ...styles.input, width: "auto", marginBottom: 0 }} value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}>
+              <option value="">Tipo da peça...</option>
+              {TIPOS_DOCUMENTO.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+            </select>
+            {/* key muda a cada envio para limpar o arquivo escolhido */}
+            <input key={documentos.length} type="file" accept="application/pdf" onChange={e => setArquivoDocumento(e.target.files?.[0] ?? null)} />
+            <button onClick={() => handleEnviarDocumento(processo)} disabled={enviandoDocumento} style={styles.btnMiniNeutro}>
+              {enviandoDocumento ? "Enviando..." : "📤 Enviar peça"}
+            </button>
+            <small style={styles.textoSecundario}>Só PDF, até 10 MB.</small>
+          </div>
+        )}
+
+        {erroDocumento && <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroDocumento}</div>}
+      </div>
+    );
+  };
+
   // Usada no modal do processo e na tela do processo completo
   const renderListaPrazos = (prazos: any[]) => (
     prazos.length > 0 ? prazos.map((prazo) => {
@@ -592,11 +740,13 @@ export default function Dashboard() {
               <th style={styles.th}>Título / Cliente</th>
               <th style={styles.th}>Tribunal / Tipo</th>
               <th style={styles.th}>Responsável / Status</th>
+              <th style={styles.th}>Peças</th>
             </tr>
           </thead>
           <tbody>
             {processosAdmin.length > 0 ? processosAdmin.map(proc => (
-              <tr key={proc.id} style={styles.tabelaLinha}>
+              <React.Fragment key={proc.id}>
+              <tr style={styles.tabelaLinha}>
                 <td style={{ ...styles.td, fontWeight: "bold" }}>{proc.cnj}</td>
                 <td style={styles.td}>
                   <div>{proc.titulo}</div>
@@ -616,9 +766,26 @@ export default function Dashboard() {
                   )}
                   {proc.status === "Encerrado" && <div style={{ marginTop: "4px" }}>{renderSeloStatus(proc)}</div>}
                 </td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => setProcessoPecasAdmin(processoPecasAdmin === proc.id ? null : proc.id)}
+                    style={styles.btnMiniNeutro}
+                  >
+                    {processoPecasAdmin === proc.id ? "Fechar" : "📄 Peças"}
+                  </button>
+                </td>
               </tr>
+              {/* Peças do processo abertas embaixo da linha (Spec 003) */}
+              {processoPecasAdmin === proc.id && (
+                <tr>
+                  <td colSpan={5} style={{ ...styles.td, fontSize: "13px" }}>
+                    {renderPecas(proc, false)}
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             )) : (
-              <tr><td colSpan={4} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
+              <tr><td colSpan={5} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
             )}
           </tbody>
         </table>
@@ -977,6 +1144,11 @@ export default function Dashboard() {
       </div>
 
       <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
+        <h4 style={styles.tituloSecao}>Peças</h4>
+        {renderPecas(processo, true)}
+      </div>
+
+      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h4 style={styles.tituloSecao}>
             Histórico de movimentações{processo.movimentacoes ? ` (${processo.movimentacoes.length})` : ""}
@@ -1148,6 +1320,11 @@ export default function Dashboard() {
                   {estimativaVencida(processoEmPrevia) ? "venceu" : "vence"} em {formatarData(processoEmPrevia.prazo_estimado)}
                 </div>
               )}
+            </div>
+
+            <div style={styles.subtituloDatajud}>Peças</div>
+            <div style={{ fontSize: "13px" }}>
+              {renderPecas(processoEmPrevia, false)}
             </div>
 
             {!processoEmPrevia.responsavel && estimativaAntiga(processoEmPrevia) && (
