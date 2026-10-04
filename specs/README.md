@@ -25,3 +25,4 @@ pergunta o que falta e preenche o modelo.
 |----|------|--------|
 | 001 | [Detectar processo encerrado](001-detectar-processo-encerrado.md) | Implementada |
 | 002 | [Revisão da contagem de prazos](002-revisao-contagem-prazos.md) | Implementada |
+| 003 | [Peças do processo](003-pecas-do-processo.md) | Aprovada |
