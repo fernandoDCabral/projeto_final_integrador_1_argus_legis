@@ -7,3 +7,4 @@ from .escritorios import router as escritorios_router
 from .autenticacao import router as autenticacoes_router
 from .registro import router as registro_router
 from .datajud import router as datajud_router
+from .documentos import router as documentos_router
