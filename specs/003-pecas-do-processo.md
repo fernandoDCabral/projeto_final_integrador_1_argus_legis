@@ -1,5 +1,5 @@
 # Spec 003: Peças do processo
-**Status:** Aprovada   **Data:** 2026-10-04
+**Status:** Implementada   **Data:** 2026-10-04
 **Relacionadas:** Spec 001 (processo encerrado), branch `feat/liberar-excluir-processo` (Victor — devolver à piscina e excluir processo), futura spec de deploy
 
 ## 1. Contexto
@@ -109,9 +109,9 @@
 - [x] **Ação:** `alembic upgrade head`, `downgrade -1` e `upgrade head` → **Esperado:** tabela criada, removida e criada de novo sem erro.
 - [x] **Ação:** enviar, listar, baixar (comparar SHA-256) e apagar pela API com os PDFs públicos medidos → **Esperado:** critérios da seção 7.
 - [x] **Ação:** tokens de advogado da piscina, ADMIN e escritório de teste → **Esperado:** 403 / 200 / 404 conforme a tabela de acesso.
-- [ ] **Ação:** na tela, assumir um processo, enviar uma peça, baixar e apagar → **Esperado:** funciona; o arquivo baixado abre no leitor de PDF.
-- [ ] **Ação:** abrir a prévia de um processo da piscina com peças → **Esperado:** lista sem botão de baixar.
-- [ ] **Ação:** como ADMIN, em "Todos os Processos", clicar em "📄 Peças" → **Esperado:** lista embaixo da linha, com Baixar e sem Apagar/Enviar.
+- [x] **Ação:** na tela, assumir um processo, enviar uma peça, baixar e apagar → **Esperado:** funciona; o arquivo baixado abre no leitor de PDF. *(Conferido na tela pelo Savio.)*
+- [x] **Ação:** abrir a prévia de um processo da piscina com peças → **Esperado:** lista sem botão de baixar. *(Conferido na tela pelo Savio.)*
+- [x] **Ação:** como ADMIN, em "Todos os Processos", clicar em "📄 Peças" → **Esperado:** lista embaixo da linha, com Baixar e sem Apagar/Enviar. *(Conferido na tela pelo Savio.)*
 
 ## 9. Perguntas em Aberto
 - Nenhuma no momento.
