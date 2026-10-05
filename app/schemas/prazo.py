@@ -4,8 +4,6 @@ from typing import Optional
 
 class PrazoBase(BaseModel):
     descricao: str
-    # Só os prazos internos antigos (Prazo Inicial, antes da Spec 002) não têm
-    data_publicacao: Optional[date] = None
     finalizado: bool = False
 
 class PrazoCreate(PrazoBase):
@@ -16,6 +14,8 @@ class PrazoCreate(PrazoBase):
 class PrazoResponse(PrazoBase):
     id: int
     processo_id: int
+    # Só os prazos internos antigos (Prazo Inicial, antes da Spec 002) não têm
+    data_publicacao: Optional[date] = None
     data_vencimento: date
     # True só nos Prazos Iniciais antigos; prazo novo sempre nasce False
     interno: bool

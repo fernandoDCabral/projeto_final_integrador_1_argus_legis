@@ -161,6 +161,33 @@ def atualizar_processo(
     db.refresh(processo_atual)
     return processo_atual
 
+@router.post("/{processo_id}/liberar", response_model=schemas.ProcessoResponse)
+def liberar_processo(
+    processo_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
+):
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
+    processo = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado!")
+
+    # verificar_acesso_ao_processo já deixa passar quando responsavel_id é
+    # NULL (regra da piscina), mas aqui isso não faz sentido: não dá pra
+    # liberar algo que já está livre. Só o dono de fato pode liberar.
+    if processo.responsavel_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este processo não está sob sua responsabilidade."
+        )
+
+    processo.responsavel_id = None
+    db.commit()
+    db.refresh(processo)
+    return processo
+
 @router.post("/{processo_id}/datajud", response_model=schemas.ProcessoResponse)
 def atualizar_dados_datajud(
     processo_id: int,
@@ -208,18 +235,27 @@ def atualizar_dados_datajud(
 def excluir_processo(
     processo_id: int,
     db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(VerificadorPerfil(["ADVOGADO"]))
+    current_user: models.Usuario = Depends(VerificadorPerfil(["ADMIN"]))
 ):
+    # Filtra escritorio_id direto na query em vez de reusar
+    # verificar_acesso_ao_processo: sua semântica de "dono responde" não se
+    # aplica aqui, e reusá-la faria um processo com responsável de outro
+    # advogado cair no 403 genérico antes de chegar na checagem abaixo.
     processo_para_excluir = db.query(models.Processo).filter(
-        models.Processo.id == processo_id).first()
+        models.Processo.id == processo_id,
+        models.Processo.escritorio_id == current_user.escritorio_id
+    ).first()
     if not processo_para_excluir:
         raise HTTPException(
             status_code=404,
             detail="Processo não encontrado para exclusão!"
         )
-    
-    verificar_acesso_ao_processo(
-        processo_id, current_user.id, current_user.escritorio_id, db)
+
+    if processo_para_excluir.responsavel_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Só é possível excluir processos sem responsável (fora da piscina)."
+        )
 
     db.delete(processo_para_excluir)
     db.commit()

@@ -70,6 +70,7 @@ export default function Dashboard() {
   // Confirmação de exclusão feita na própria linha da tabela, para não
   // depender de window.confirm
   const [clienteParaExcluir, setClienteParaExcluir] = useState<number | null>(null);
+  const [processoParaExcluir, setProcessoParaExcluir] = useState<number | null>(null);
 
   // Formulários do Admin
   const [formUsuario, setFormUsuario] = useState({
@@ -269,6 +270,16 @@ export default function Dashboard() {
     }
   };
 
+  const handleLiberarProcesso = async (processoId: number) => {
+    try {
+      await api.post(`/processos/${processoId}/liberar`);
+      setAviso({ tipo: "sucesso", texto: "Processo devolvido à piscina." });
+      await carregarDados();
+    } catch (error) {
+      setAviso({ tipo: "erro", texto: mensagemDeErro(error, "Não foi possível liberar este processo.") });
+    }
+  };
+
   // --- AÇÕES DO ADMIN ---
   const handleCadastrarAdvogado = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -342,6 +353,18 @@ export default function Dashboard() {
         tipo: "erro",
         texto: mensagemDeErro(error, "Erro ao excluir cliente.")
       });
+    }
+  };
+
+  const handleExcluirProcesso = async (processoId: number) => {
+    try {
+      await api.delete(`/processos/${processoId}`);
+      setAviso({ tipo: "sucesso", texto: "Processo removido." });
+      setProcessoParaExcluir(null);
+      await carregarDados();
+    } catch (error) {
+      setProcessoParaExcluir(null);
+      setAviso({ tipo: "erro", texto: mensagemDeErro(error, "Erro ao excluir processo.") });
     }
   };
 
@@ -741,10 +764,13 @@ export default function Dashboard() {
               <th style={styles.th}>Tribunal / Tipo</th>
               <th style={styles.th}>Responsável / Status</th>
               <th style={styles.th}>Peças</th>
+              <th style={{ ...styles.th, textAlign: "right" }}>Ações</th>
             </tr>
           </thead>
           <tbody>
-            {processosAdmin.length > 0 ? processosAdmin.map(proc => (
+            {processosAdmin.length > 0 ? processosAdmin.map(proc => {
+              const confirmando = processoParaExcluir === proc.id;
+              return (
               <React.Fragment key={proc.id}>
               <tr style={styles.tabelaLinha}>
                 <td style={{ ...styles.td, fontWeight: "bold" }}>{proc.cnj}</td>
@@ -774,18 +800,37 @@ export default function Dashboard() {
                     {processoPecasAdmin === proc.id ? "Fechar" : "📄 Peças"}
                   </button>
                 </td>
+                <td style={{ ...styles.td, textAlign: "right" }}>
+                  {!proc.responsavel && (
+                    confirmando ? (
+                      <span style={{ display: "inline-flex", gap: "6px" }}>
+                        <button onClick={() => handleExcluirProcesso(proc.id)} style={styles.btnConfirmarExclusao}>
+                          Confirmar
+                        </button>
+                        <button onClick={() => setProcessoParaExcluir(null)} style={styles.btnMiniNeutro}>
+                          Cancelar
+                        </button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setProcessoParaExcluir(proc.id)} style={styles.btnMiniNeutro}>
+                        Excluir
+                      </button>
+                    )
+                  )}
+                </td>
               </tr>
               {/* Peças do processo abertas embaixo da linha (Spec 003) */}
               {processoPecasAdmin === proc.id && (
                 <tr>
-                  <td colSpan={5} style={{ ...styles.td, fontSize: "13px" }}>
+                  <td colSpan={6} style={{ ...styles.td, fontSize: "13px" }}>
                     {renderPecas(proc, false)}
                   </td>
                 </tr>
               )}
               </React.Fragment>
-            )) : (
-              <tr><td colSpan={5} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
+              );
+            }) : (
+              <tr><td colSpan={6} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
             )}
           </tbody>
         </table>
@@ -1221,6 +1266,12 @@ export default function Dashboard() {
                   <div><span style={styles.label}>Vencimento:</span><span style={styles.valor}>{dataVencimentoReal ? formatarData(dataVencimentoReal) : "Sem prazo"}</span></div>
                 </div>
                 <span style={styles.badgeAtivo}>{processo.status}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleLiberarProcesso(processo.id); }}
+                  style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
+                >
+                  Liberar para a piscina
+                </button>
             </div>
           );
         }) : <p style={{ color: "#666" }}>Nenhum processo sob sua responsabilidade.</p>}
