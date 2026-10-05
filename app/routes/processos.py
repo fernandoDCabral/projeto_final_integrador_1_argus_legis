@@ -53,23 +53,16 @@ def criar_processo(
     dados_processo["movimentacoes"] = processo.model_dump(mode="json")["movimentacoes"]
 
     novo_processo = models.Processo(**dados_processo)
-    if novo_processo.data_publicacao_datajud:
+    # O status vem do DataJud, não do que foi digitado (Spec 001)
+    novo_processo.status = "Encerrado" if novo_processo.encerrado_em else "Ativo"
+    # Processo encerrado não tem prazo a cumprir (Spec 002)
+    if novo_processo.data_publicacao_datajud and not novo_processo.encerrado_em:
         novo_processo.prazo_estimado = prazo_service.calcular_data_vencimento(
             db, novo_processo.data_publicacao_datajud, novo_processo.tipo_processo)
 
+    # Nasce sem prazo: o prazo só existe a partir de uma publicação, que o
+    # advogado informa ao assumir (Spec 002)
     db.add(novo_processo)
-    db.flush()
-    # Busca a data_cadastro gerada pelo banco, que o prazo inicial usa
-    db.refresh(novo_processo)
-
-    # O prazo inicial conta da data de cadastro, então já nasce com o
-    # processo e fica visível na piscina antes de alguém assumir
-    db.add(models.Prazo(
-        descricao=f"Prazo Inicial ({novo_processo.tipo_processo})",
-        data_vencimento=prazo_service.calcular_data_vencimento_interno(db, novo_processo),
-        interno=True,
-        processo_id=novo_processo.id
-    ))
     db.commit()
     db.refresh(novo_processo)
     return novo_processo
@@ -159,7 +152,8 @@ def atualizar_processo(
         setattr(processo_atual, chave, valor)
 
     # O tipo define quantos dias o prazo tem, então a estimativa muda junto
-    if "tipo_processo" in dados_dict and processo_atual.data_publicacao_datajud:
+    if ("tipo_processo" in dados_dict and processo_atual.data_publicacao_datajud
+            and not processo_atual.encerrado_em):
         processo_atual.prazo_estimado = prazo_service.calcular_data_vencimento(
             db, processo_atual.data_publicacao_datajud, processo_atual.tipo_processo)
 
@@ -225,8 +219,11 @@ def atualizar_dados_datajud(
     processo.datajud_atualizado_em = consulta.atualizado_em
     processo.data_publicacao_datajud = consulta.data_publicacao
     processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
+    # Pode encerrar ou voltar a ficar ativo, se o processo foi reativado
+    processo.encerrado_em = consulta.encerrado_em
+    processo.status = "Encerrado" if consulta.encerrado_em else "Ativo"
     processo.prazo_estimado = None
-    if consulta.data_publicacao:
+    if consulta.data_publicacao and not consulta.encerrado_em:
         processo.prazo_estimado = prazo_service.calcular_data_vencimento(
             db, consulta.data_publicacao, processo.tipo_processo)
 
@@ -263,24 +260,6 @@ def excluir_processo(
     db.delete(processo_para_excluir)
     db.commit()
     return {"detail": f"Processo {processo_id} removido com sucesso!"}
-
-@router.get(
-    "/{processo_id}/prazo-movimentacao",
-    response_model=schemas.ProcessoPrazoMovimentacaoResponse
-)
-def calcular_prazo_movimentacao(
-    processo_id: int,
-    db: Session = Depends(database.get_db),
-    current_user: models.Usuario = Depends(get_current_user)
-):
-    verificar_acesso_ao_processo(
-        processo_id, current_user.id, current_user.escritorio_id, db)
-    processo = db.query(models.Processo).filter(
-        models.Processo.id == processo_id).first()
-    if not processo:
-        raise HTTPException(status_code=404, detail="Processo não encontrado!")
-
-    return prazo_service.calcular_prazo_movimentacao(processo)
 
 @router.get(
     "/{processo_id}/prazos", 

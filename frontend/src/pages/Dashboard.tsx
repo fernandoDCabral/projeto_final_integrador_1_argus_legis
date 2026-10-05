@@ -16,6 +16,9 @@ import {
 type AbaAdmin = "cadastro" | "clientes" | "processos";
 type Aviso = { tipo: "sucesso" | "erro"; texto: string } | null;
 
+// Mesma lista fixa do backend (app/routes/documentos.py) — Spec 003
+const TIPOS_DOCUMENTO = ["Petição inicial", "Contestação", "Réplica", "Recurso", "Petição (outras)"];
+
 const FORM_CLIENTE_VAZIO = {
   nome: "",
   tipo_pessoa: "FISICA" as TipoPessoa,
@@ -41,6 +44,17 @@ export default function Dashboard() {
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
   const [abaAdvogado, setAbaAdvogado] = useState<"painel" | "processos">("painel");
   const [processoAberto, setProcessoAberto] = useState<any | null>(null);
+
+  // Peças do processo aberto na prévia ou no processo completo (Spec 003)
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [tipoDocumento, setTipoDocumento] = useState("");
+  const [arquivoDocumento, setArquivoDocumento] = useState<File | null>(null);
+  const [enviandoDocumento, setEnviandoDocumento] = useState(false);
+  const [erroDocumento, setErroDocumento] = useState("");
+  // Confirmação de exclusão na própria linha, como nos clientes
+  const [documentoParaApagar, setDocumentoParaApagar] = useState<number | null>(null);
+  // Tabela do ADMIN: processo com a lista de peças aberta embaixo da linha
+  const [processoPecasAdmin, setProcessoPecasAdmin] = useState<number | null>(null);
 
   // Estados para o Admin
   const [abaAdmin, setAbaAdmin] = useState<AbaAdmin>("cadastro");
@@ -110,7 +124,8 @@ export default function Dashboard() {
         const response = await api.get('/processos/');
         const todosProcessos = response.data;
         setMeusProcessos(todosProcessos.filter((p: any) => p.responsavel?.id === user?.id));
-        setPiscinaProcessos(todosProcessos.filter((p: any) => p.responsavel === null));
+        // Processo encerrado não está esperando ninguém assumir
+        setPiscinaProcessos(todosProcessos.filter((p: any) => p.responsavel === null && p.status !== "Encerrado"));
       }
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
@@ -131,6 +146,18 @@ export default function Dashboard() {
   useEffect(() => {
     document.querySelector("main")?.scrollTo(0, 0);
   }, [abaAdvogado, processoAberto?.id]);
+
+  // Carrega as peças do processo aberto (o completo tem prioridade sobre a prévia)
+  const idProcessoComPecas = processoAberto?.id ?? processoEmPrevia?.id ?? processoPecasAdmin;
+  useEffect(() => {
+    setDocumentos([]);
+    setErroDocumento("");
+    setDocumentoParaApagar(null);
+    if (!idProcessoComPecas) return;
+    api.get(`/processos/${idProcessoComPecas}/documentos`)
+      .then(({ data }) => setDocumentos(data))
+      .catch(error => setErroDocumento(mensagemDeErro(error, "Não foi possível carregar as peças.")));
+  }, [idProcessoComPecas]);
 
   // --- AÇÕES DO ADVOGADO ---
   const abrirPrevia = (processo: any) => {
@@ -160,6 +187,59 @@ export default function Dashboard() {
     }
   };
 
+  const handleEnviarDocumento = async (processo: any) => {
+    if (!tipoDocumento || !arquivoDocumento) {
+      setErroDocumento("Escolha o tipo da peça e o arquivo PDF.");
+      return;
+    }
+    const dados = new FormData();
+    dados.append("tipo", tipoDocumento);
+    dados.append("arquivo", arquivoDocumento);
+    setEnviandoDocumento(true);
+    setErroDocumento("");
+    try {
+      // A api usa JSON por padrão; aqui o corpo é arquivo
+      const { data } = await api.post(`/processos/${processo.id}/documentos`, dados, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setDocumentos(lista => [data, ...lista]);
+      setTipoDocumento("");
+      setArquivoDocumento(null);
+    } catch (error) {
+      setErroDocumento(mensagemDeErro(error, "Não foi possível enviar a peça."));
+    } finally {
+      setEnviandoDocumento(false);
+    }
+  };
+
+  // Baixa com o token do usuário e entrega ao navegador com o nome original
+  const handleBaixarDocumento = async (documento: any) => {
+    setErroDocumento("");
+    try {
+      const { data } = await api.get(`/documentos/${documento.id}/arquivo`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = documento.nome_arquivo;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setErroDocumento(mensagemDeErro(error, "Não foi possível baixar a peça."));
+    }
+  };
+
+  const handleApagarDocumento = async (documentoId: number) => {
+    setErroDocumento("");
+    try {
+      await api.delete(`/documentos/${documentoId}`);
+      setDocumentos(lista => lista.filter(d => d.id !== documentoId));
+    } catch (error) {
+      setErroDocumento(mensagemDeErro(error, "Não foi possível apagar a peça."));
+    } finally {
+      setDocumentoParaApagar(null);
+    }
+  };
+
   const abrirProcessoCompleto = (processo: any) => {
     setProcessoEmPrevia(null);
     setProcessoAberto(processo);
@@ -171,18 +251,14 @@ export default function Dashboard() {
     try {
       await api.patch(`/processos/${processo.id}`, { responsavel_id: user?.id });
 
-      // Processos antigos foram cadastrados sem o prazo inicial
-      if (processo.prazos.length === 0) {
+      // Prazo só nasce da publicação (Spec 002). Sempre cria um novo: o
+      // prazos[0] pode ser um Prazo Inicial antigo, já finalizado
+      if (dataPublicacaoAssumir) {
         await api.post('/prazos/', {
           processo_id: processo.id,
-          descricao: `Prazo Inicial (${processo.tipo_processo})`,
-          data_publicacao: dataPublicacaoAssumir || null,
+          descricao: `Prazo da publicação (${processo.tipo_processo})`,
+          data_publicacao: dataPublicacaoAssumir,
           finalizado: false
-        });
-      } else if (dataPublicacaoAssumir) {
-        // Com a publicação, o prazo passa a contar pelos dias do tipo do processo
-        await api.patch(`/prazos/${processo.prazos[0].id}`, {
-          data_publicacao: dataPublicacaoAssumir
         });
       }
 
@@ -343,12 +419,15 @@ export default function Dashboard() {
           datajud_atualizado_em: consultaDatajud.atualizado_em,
           data_publicacao_datajud: consultaDatajud.data_publicacao,
           peticao_apos_publicacao: consultaDatajud.peticao_apos_publicacao,
+          encerrado_em: consultaDatajud.encerrado_em,
         })
       });
 
       setAviso({
         tipo: "sucesso",
-        texto: "Processo cadastrado e enviado para a piscina!"
+        texto: consultaDatajud?.encerrado_em
+          ? "Processo cadastrado como encerrado (não vai para a piscina)."
+          : "Processo cadastrado e enviado para a piscina!"
       });
       fecharModalProcesso();
       await carregarDados();
@@ -390,7 +469,95 @@ export default function Dashboard() {
   const estimativaVencida = (processo: any) =>
     !!processo.prazo_estimado && analisarPrazo(processo.prazo_estimado).dias! < 0;
 
+  // Depois disso a estimativa vencida só faz ruído: vira "sem prazo em aberto" (Spec 002)
+  const DIAS_ALERTA_ESTIMATIVA = 30;
+  const estimativaAntiga = (processo: any) =>
+    estimativaVencida(processo) && -analisarPrazo(processo.prazo_estimado).dias! > DIAS_ALERTA_ESTIMATIVA;
+
+  // Prazo que ainda conta: o aberto que vence primeiro. Os Prazos Iniciais
+  // antigos ficaram finalizados e não entram (Spec 002)
+  const prazoAberto = (processo: any) =>
+    (processo.prazos ?? [])
+      .filter((prazo: any) => !prazo.finalizado)
+      .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento))[0];
+
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
+
+  // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
+  const renderSeloStatus = (processo: any) => (
+    processo.status === "Encerrado"
+      ? <span style={styles.badgeEncerrado}>Encerrado em {formatarData(processo.encerrado_em)}</span>
+      : <span style={styles.badgeAtivo}>{processo.status}</span>
+  );
+
+  const formatarTamanho = (bytes: number) =>
+    bytes < 1024 * 1024
+      ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+      : `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+
+  // Peças do processo (Spec 003). Na prévia só a lista; no processo completo,
+  // o responsável também baixa, apaga e envia
+  const renderPecas = (processo: any, completo: boolean) => {
+    const ehResponsavel = processo.responsavel?.id === user?.id;
+    const ehAdmin = user?.perfil === "ADMIN";
+    // Enviar e apagar: só o responsável. Baixar: o responsável e o ADMIN
+    const podeMexer = completo && ehResponsavel;
+    const podeBaixar = podeMexer || ehAdmin;
+    return (
+      <div>
+        {documentos.length > 0 ? documentos.map(documento => (
+          <div key={documento.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", border: "1px solid #eee", padding: "8px", marginTop: "6px" }}>
+            <div>
+              <strong>📄 {documento.tipo}</strong>
+              <div style={styles.textoSecundario}>
+                {documento.nome_arquivo} · {documento.paginas} {documento.paginas === 1 ? "página" : "páginas"} · {formatarTamanho(documento.tamanho)} · {new Date(documento.enviado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+              </div>
+            </div>
+            {podeBaixar && (
+              <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                {documentoParaApagar === documento.id ? (
+                  <>
+                    <button onClick={() => handleApagarDocumento(documento.id)} style={{ ...styles.btnMiniNeutro, color: "#c0392b" }}>Confirmar</button>
+                    <button onClick={() => setDocumentoParaApagar(null)} style={styles.btnMiniNeutro}>Cancelar</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => handleBaixarDocumento(documento)} style={styles.btnMiniNeutro}>⬇️ Baixar</button>
+                    {podeMexer && (
+                      <button onClick={() => setDocumentoParaApagar(documento.id)} style={styles.btnMiniNeutro}>🗑️ Apagar</button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )) : <div style={styles.textoSecundario}>Nenhuma peça enviada.</div>}
+
+        {!completo && documentos.length > 0 && !ehResponsavel && !ehAdmin && (
+          <div style={{ ...styles.textoSecundario, marginTop: "6px", fontSize: "12px" }}>
+            O conteúdo das peças abre depois de assumir o processo.
+          </div>
+        )}
+
+        {podeMexer && (
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginTop: "12px" }}>
+            <select style={{ ...styles.input, width: "auto", marginBottom: 0 }} value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}>
+              <option value="">Tipo da peça...</option>
+              {TIPOS_DOCUMENTO.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+            </select>
+            {/* key muda a cada envio para limpar o arquivo escolhido */}
+            <input key={documentos.length} type="file" accept="application/pdf" onChange={e => setArquivoDocumento(e.target.files?.[0] ?? null)} />
+            <button onClick={() => handleEnviarDocumento(processo)} disabled={enviandoDocumento} style={styles.btnMiniNeutro}>
+              {enviandoDocumento ? "Enviando..." : "📤 Enviar peça"}
+            </button>
+            <small style={styles.textoSecundario}>Só PDF, até 10 MB.</small>
+          </div>
+        )}
+
+        {erroDocumento && <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroDocumento}</div>}
+      </div>
+    );
+  };
 
   // Usada no modal do processo e na tela do processo completo
   const renderListaPrazos = (prazos: any[]) => (
@@ -409,7 +576,7 @@ export default function Dashboard() {
           <div style={styles.textoSecundario}>
             Vence em {formatarData(prazo.data_vencimento)} ·{" "}
             {prazo.interno
-              ? "prazo inicial do escritório"
+              ? "prazo inicial antigo (contava do cadastro)"
               : `conta da publicação de ${formatarData(prazo.data_publicacao)}`}
           </div>
         </div>
@@ -419,9 +586,14 @@ export default function Dashboard() {
 
   // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
   const renderCaixaDatajud = (dados: Pick<ConsultaDatajud,
-    "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em">) => (
+    "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em" | "encerrado_em">) => (
     <div style={styles.caixaDatajud}>
       <strong>{dados.classe ?? "Processo encontrado"}</strong>
+      {dados.encerrado_em && (
+        <div style={{ margin: "4px 0" }}>
+          <span style={styles.badgeEncerrado}>Encerrado em {formatarData(dados.encerrado_em)}</span>
+        </div>
+      )}
       <div style={styles.textoSecundario}>
         {[dados.orgao_julgador, dados.grau].filter(Boolean).join(" · ")}
       </div>
@@ -591,6 +763,7 @@ export default function Dashboard() {
               <th style={styles.th}>Título / Cliente</th>
               <th style={styles.th}>Tribunal / Tipo</th>
               <th style={styles.th}>Responsável / Status</th>
+              <th style={styles.th}>Peças</th>
               <th style={{ ...styles.th, textAlign: "right" }}>Ações</th>
             </tr>
           </thead>
@@ -598,7 +771,8 @@ export default function Dashboard() {
             {processosAdmin.length > 0 ? processosAdmin.map(proc => {
               const confirmando = processoParaExcluir === proc.id;
               return (
-              <tr key={proc.id} style={styles.tabelaLinha}>
+              <React.Fragment key={proc.id}>
+              <tr style={styles.tabelaLinha}>
                 <td style={{ ...styles.td, fontWeight: "bold" }}>{proc.cnj}</td>
                 <td style={styles.td}>
                   <div>{proc.titulo}</div>
@@ -616,6 +790,15 @@ export default function Dashboard() {
                   ) : (
                     <span style={styles.badgePiscina}>⚠️ Aguardando Adoção</span>
                   )}
+                  {proc.status === "Encerrado" && <div style={{ marginTop: "4px" }}>{renderSeloStatus(proc)}</div>}
+                </td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => setProcessoPecasAdmin(processoPecasAdmin === proc.id ? null : proc.id)}
+                    style={styles.btnMiniNeutro}
+                  >
+                    {processoPecasAdmin === proc.id ? "Fechar" : "📄 Peças"}
+                  </button>
                 </td>
                 <td style={{ ...styles.td, textAlign: "right" }}>
                   {!proc.responsavel && (
@@ -636,9 +819,18 @@ export default function Dashboard() {
                   )}
                 </td>
               </tr>
+              {/* Peças do processo abertas embaixo da linha (Spec 003) */}
+              {processoPecasAdmin === proc.id && (
+                <tr>
+                  <td colSpan={6} style={{ ...styles.td, fontSize: "13px" }}>
+                    {renderPecas(proc, false)}
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
               );
             }) : (
-              <tr><td colSpan={5} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
+              <tr><td colSpan={6} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
             )}
           </tbody>
         </table>
@@ -864,10 +1056,13 @@ export default function Dashboard() {
                   type="submit"
                   style={{
                     ...styles.btnSalvar,
-                    backgroundColor: clientes.length > 0 ? "#c0392b" : "#bdc3c7",
-                    cursor: clientes.length > 0 ? "pointer" : "not-allowed"
+                    backgroundColor: clientes.length > 0 && consultaDatajud ? "#c0392b" : "#bdc3c7",
+                    cursor: clientes.length > 0 && consultaDatajud ? "pointer" : "not-allowed"
                   }}
-                  disabled={clientes.length === 0}
+                  // Só entra processo que o DataJud achou (Spec 001). Mudar o
+                  // CNJ apaga a consulta, então trava de novo
+                  disabled={clientes.length === 0 || !consultaDatajud}
+                  title={!consultaDatajud ? "Busque o processo no DataJud antes de cadastrar" : undefined}
                 >
                   Cadastrar Processo
                 </button>
@@ -899,7 +1094,7 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {meusProcessos.length > 0 ? meusProcessos.map(processo => {
-                const vencimento = processo.prazos?.[0]?.data_vencimento;
+                const vencimento = prazoAberto(processo)?.data_vencimento;
                 const infoPrazo = analisarPrazo(vencimento);
                 return (
                   <tr
@@ -917,10 +1112,14 @@ export default function Dashboard() {
                       <small style={styles.textoSecundario}>{processo.tipo_processo}</small>
                     </td>
                     <td style={styles.td}>
-                      <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
-                        {infoPrazo.texto}
-                      </span>
-                      {vencimento && <div><small style={styles.textoSecundario}>{formatarData(vencimento)}</small></div>}
+                      {processo.status === "Encerrado" ? renderSeloStatus(processo) : (
+                        <>
+                          <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
+                            {infoPrazo.texto}
+                          </span>
+                          {vencimento && <div><small style={styles.textoSecundario}>{formatarData(vencimento)}</small></div>}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -943,7 +1142,7 @@ export default function Dashboard() {
           <h3 style={styles.tituloAba}>{processo.titulo}</h3>
           <small style={styles.textoSecundario}>CNJ {processo.cnj || "—"}</small>
         </div>
-        <span style={styles.badgeAtivo}>{processo.status}</span>
+        {renderSeloStatus(processo)}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
@@ -987,6 +1186,11 @@ export default function Dashboard() {
       <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
         <h4 style={styles.tituloSecao}>Prazos</h4>
         {renderListaPrazos(processo.prazos)}
+      </div>
+
+      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
+        <h4 style={styles.tituloSecao}>Peças</h4>
+        {renderPecas(processo, true)}
       </div>
 
       <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
@@ -1039,8 +1243,8 @@ export default function Dashboard() {
     <div style={{ display: "flex", gap: "20px" }}>
       <div style={styles.column}>
         <h3 style={styles.tituloColunaAzul}>📋 Meus Processos Ativos</h3>
-        {meusProcessos.length > 0 ? meusProcessos.map((processo) => {
-          const dataVencimentoReal = processo.prazos && processo.prazos.length > 0 ? processo.prazos[0].data_vencimento : undefined;
+        {meusProcessos.filter(p => p.status !== "Encerrado").length > 0 ? meusProcessos.filter(p => p.status !== "Encerrado").map((processo) => {
+          const dataVencimentoReal = prazoAberto(processo)?.data_vencimento;
           const infoPrazo = analisarPrazo(dataVencimentoReal);
           return (
             <div
@@ -1076,12 +1280,17 @@ export default function Dashboard() {
       <div style={styles.column}>
         <h3 style={styles.tituloColunaVermelha}>⚠️ Piscina (Aguardando Adoção)</h3>
         {piscinaProcessos.length > 0 ? piscinaProcessos.map((processo) => {
-          // O prazo da publicação manda no badge; sem publicação, vale o prazo inicial
+          // Na piscina só existe a estimativa pela publicação do DataJud (Spec 002)
           const vencida = estimativaVencida(processo);
-          const infoPrazo = analisarPrazo(processo.prazo_estimado ?? processo.prazos?.[0]?.data_vencimento);
+          const antiga = estimativaAntiga(processo);
+          const infoPrazo = analisarPrazo(processo.prazo_estimado);
           let corBadge = infoPrazo.cor;
-          let textoBadge = infoPrazo.texto;
-          if (vencida) {
+          let textoBadge = processo.prazo_estimado ? infoPrazo.texto : "Sem prazo aberto";
+          if (antiga) {
+            // Mais de 30 dias vencida: cinza, sem alarme
+            corBadge = "#95a5a6";
+            textoBadge = `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao_datajud)})`;
+          } else if (vencida) {
             // Laranja: venceu, mas há petição depois da publicação (talvez respondida)
             corBadge = processo.peticao_apos_publicacao ? "#f39c12" : "#c0392b";
             textoBadge = `Vencido há ${-infoPrazo.dias!} dias (estimado)`;
@@ -1109,14 +1318,9 @@ export default function Dashboard() {
                   Publicação de {formatarData(processo.data_publicacao_datajud)}: prazo {vencida ? "venceu" : "vence"} em {formatarData(processo.prazo_estimado)} (estimado)
                 </p>
               )}
-              {vencida && processo.peticao_apos_publicacao && (
+              {vencida && !antiga && processo.peticao_apos_publicacao && (
                 <p style={{ margin: "4px 0", fontSize: "13px", color: "#b9770e" }}>
                   Há petição depois da publicação: pode já ter sido respondida.
-                </p>
-              )}
-              {processo.prazos?.[0] && (
-                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
-                  Prazo inicial: vence em {formatarData(processo.prazos[0].data_vencimento)}
                 </p>
               )}
               <button onClick={() => abrirPrevia(processo)} style={styles.btnAssumir}>Ver detalhes</button>
@@ -1169,7 +1373,19 @@ export default function Dashboard() {
               )}
             </div>
 
-            {!processoEmPrevia.responsavel && estimativaVencida(processoEmPrevia) && (
+            <div style={styles.subtituloDatajud}>Peças</div>
+            <div style={{ fontSize: "13px" }}>
+              {renderPecas(processoEmPrevia, false)}
+            </div>
+
+            {!processoEmPrevia.responsavel && estimativaAntiga(processoEmPrevia) && (
+              <div style={{ ...styles.textoSecundario, marginTop: "10px" }}>
+                A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.
+                Confira no DJEN se existe publicação mais recente.
+              </div>
+            )}
+
+            {!processoEmPrevia.responsavel && estimativaVencida(processoEmPrevia) && !estimativaAntiga(processoEmPrevia) && (
               <div style={{ ...styles.avisoInline, marginTop: "10px" }}>
                 {processoEmPrevia.peticao_apos_publicacao
                   ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
@@ -1188,7 +1404,7 @@ export default function Dashboard() {
                 />
                 <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
                   {processoEmPrevia.data_publicacao_datajud && "Sugerida pela publicação encontrada no DataJud. "}
-                  Confira no DJEN antes de assumir. Sem a data, vale o prazo inicial do escritório.
+                  Confira no DJEN antes de assumir. Sem a data, o processo fica sem prazo até você informar a publicação.
                 </div>
               </div>
             )}
@@ -1308,6 +1524,7 @@ const styles = {
   label: { color: "#666", marginRight: "5px" },
   valor: { fontWeight: "bold", color: "#333" },
   badgeAtivo: { display: "inline-block", backgroundColor: "#e8f5e9", color: "#2e7d32", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const },
+  badgeEncerrado: { display: "inline-block", backgroundColor: "#ecf0f1", color: "#555", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #bdc3c7" },
   badgePiscina: { display: "inline-block", backgroundColor: "#fff5f5", color: "#c0392b", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #ffdce0" },
   btnAssumir: { marginTop: "10px", backgroundColor: "#c0392b", color: "white", border: "none", padding: "8px 15px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" },
   btnAcaoBase: { backgroundColor: "#1a2a3a", color: "white", border: "none", padding: "10px 20px", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" as const },

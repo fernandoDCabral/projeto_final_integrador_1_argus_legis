@@ -31,8 +31,14 @@ class ProcessoBase(BaseModel):
     datajud_atualizado_em: Optional[datetime] = None
     data_publicacao_datajud: Optional[date] = None
     peticao_apos_publicacao: bool = False
+    # Data do arquivamento definitivo achado no DataJud (Spec 001)
+    encerrado_em: Optional[date] = None
 
 class ProcessoCreate(ProcessoBase):
+    # Só entra no sistema processo que o DataJud encontra, e para isso
+    # precisa do número (Spec 001). Processos antigos sem CNJ continuam
+    # aparecendo, por isso a resposta mantém o campo opcional
+    cnj: CNJ
     cliente_id: int
     responsavel_id: Optional[int] = None
     escritorio_id: Optional[int] = None
@@ -41,7 +47,7 @@ class ProcessoUpdate(BaseModel):
     cnj: Optional[CNJ] = None
     titulo: Optional[str] = None
     tribunal: Optional[str] = None
-    status: Optional[str] = None
+    # Sem status: ele vem só do DataJud (Spec 001)
     tipo_processo: Optional[str] = None
     cliente_id: Optional[int] = None
     responsavel_id: Optional[int] = None
@@ -57,11 +63,3 @@ class ProcessoResponse(ProcessoBase):
     prazos: List[PrazoResponse]
     prazo_estimado: Optional[date] = None
     model_config = ConfigDict(from_attributes=True)
-
-class ProcessoPrazoMovimentacaoResponse(BaseModel):
-    processo_id: int
-    tipo_processo: str
-    prazo_dias: int
-    data_cadastro: datetime
-    data_limite: datetime
-    dias_restantes: int

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .cliente import Cliente
     from .usuario import Usuario
     from .prazo import Prazo
+    from .documento import Documento
 
 class Processo(Base):
     __tablename__ = "processos"
@@ -34,6 +35,8 @@ class Processo(Base):
     data_publicacao_datajud: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     prazo_estimado: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     peticao_apos_publicacao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Data do arquivamento definitivo no DataJud. Preenchida = processo encerrado
+    encerrado_em: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     #Foreign keys
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"))
@@ -46,6 +49,11 @@ class Processo(Base):
     cliente: Mapped["Cliente"] = relationship(back_populates="processos")
     prazos: Mapped[list["Prazo"]] = relationship(
         back_populates="processo", 
+        cascade="all, delete-orphan"
+    )
+    # Apagar o processo apaga as peças junto (Spec 003)
+    documentos: Mapped[list["Documento"]] = relationship(
+        back_populates="processo",
         cascade="all, delete-orphan"
     )
     responsavel: Mapped["Usuario"] = relationship(
