@@ -51,6 +51,8 @@ export default function Dashboard() {
   const [arquivoDocumento, setArquivoDocumento] = useState<File | null>(null);
   const [enviandoDocumento, setEnviandoDocumento] = useState(false);
   const [erroDocumento, setErroDocumento] = useState("");
+  // "Peça enviada." / "Peça apagada." abaixo da lista; nunca junto com o erro
+  const [sucessoDocumento, setSucessoDocumento] = useState("");
   // Confirmação de exclusão na própria linha, como nos clientes
   const [documentoParaApagar, setDocumentoParaApagar] = useState<number | null>(null);
   // Tabela do ADMIN: processo com a lista de peças aberta embaixo da linha
@@ -152,6 +154,7 @@ export default function Dashboard() {
   useEffect(() => {
     setDocumentos([]);
     setErroDocumento("");
+    setSucessoDocumento("");
     setDocumentoParaApagar(null);
     if (!idProcessoComPecas) return;
     api.get(`/processos/${idProcessoComPecas}/documentos`)
@@ -189,6 +192,7 @@ export default function Dashboard() {
 
   const handleEnviarDocumento = async (processo: any) => {
     if (!tipoDocumento || !arquivoDocumento) {
+      setSucessoDocumento("");
       setErroDocumento("Escolha o tipo da peça e o arquivo PDF.");
       return;
     }
@@ -197,6 +201,7 @@ export default function Dashboard() {
     dados.append("arquivo", arquivoDocumento);
     setEnviandoDocumento(true);
     setErroDocumento("");
+    setSucessoDocumento("");
     try {
       // A api usa JSON por padrão; aqui o corpo é arquivo
       const { data } = await api.post(`/processos/${processo.id}/documentos`, dados, {
@@ -205,6 +210,7 @@ export default function Dashboard() {
       setDocumentos(lista => [data, ...lista]);
       setTipoDocumento("");
       setArquivoDocumento(null);
+      setSucessoDocumento("Peça enviada.");
     } catch (error) {
       setErroDocumento(mensagemDeErro(error, "Não foi possível enviar a peça."));
     } finally {
@@ -215,6 +221,7 @@ export default function Dashboard() {
   // Baixa com o token do usuário e entrega ao navegador com o nome original
   const handleBaixarDocumento = async (documento: any) => {
     setErroDocumento("");
+    setSucessoDocumento("");
     try {
       const { data } = await api.get(`/documentos/${documento.id}/arquivo`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
@@ -230,9 +237,11 @@ export default function Dashboard() {
 
   const handleApagarDocumento = async (documentoId: number) => {
     setErroDocumento("");
+    setSucessoDocumento("");
     try {
       await api.delete(`/documentos/${documentoId}`);
       setDocumentos(lista => lista.filter(d => d.id !== documentoId));
+      setSucessoDocumento("Peça apagada.");
     } catch (error) {
       setErroDocumento(mensagemDeErro(error, "Não foi possível apagar a peça."));
     } finally {
@@ -522,7 +531,9 @@ export default function Dashboard() {
               <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
                 {documentoParaApagar === documento.id ? (
                   <>
-                    <button onClick={() => handleApagarDocumento(documento.id)} style={{ ...styles.btnMiniNeutro, color: "#c0392b" }}>Confirmar</button>
+                    {/* Deixa claro o que o botão faz antes de apagar (issue #72) */}
+                    <span style={{ ...styles.textoSecundario, alignSelf: "center" }}>Apagar esta peça? Não dá para desfazer.</span>
+                    <button onClick={() => handleApagarDocumento(documento.id)} style={styles.btnConfirmarExclusao}>Apagar</button>
                     <button onClick={() => setDocumentoParaApagar(null)} style={styles.btnMiniNeutro}>Cancelar</button>
                   </>
                 ) : (
@@ -560,6 +571,12 @@ export default function Dashboard() {
         )}
 
         {erroDocumento && <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroDocumento}</div>}
+        {/* Mesmas cores do avisoSucesso do topo do Painel */}
+        {sucessoDocumento && (
+          <div style={{ ...styles.avisoInline, marginTop: "8px", backgroundColor: "#e8f5e9", border: "1px solid #c5e3c8", color: "#2e7d32" }}>
+            {sucessoDocumento}
+          </div>
+        )}
       </div>
     );
   };
