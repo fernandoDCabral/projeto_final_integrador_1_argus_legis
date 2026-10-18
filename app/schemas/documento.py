@@ -10,5 +10,7 @@ class DocumentoResponse(BaseModel):
     tamanho: int
     paginas: int
     enviado_por_id: int
+    # Vem da property enviado_por_nome do model Documento (Spec 005)
+    enviado_por_nome: str
     enviado_em: datetime
     model_config = ConfigDict(from_attributes=True)
