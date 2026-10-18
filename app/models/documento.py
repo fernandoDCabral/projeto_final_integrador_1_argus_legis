@@ -7,6 +7,7 @@ from ..database import Base
 
 if TYPE_CHECKING:
     from .processo import Processo
+    from .usuario import Usuario
 
 # Peça do processo (petição, contestação...) guardada no próprio banco (Spec 003)
 class Documento(Base):
@@ -27,3 +28,11 @@ class Documento(Base):
 
     # Relações
     processo: Mapped["Processo"] = relationship(back_populates="documentos")
+    # Quem enviou a peça (Spec 005). Só ida: o Usuario não precisa da lista de peças
+    enviado_por: Mapped["Usuario"] = relationship(foreign_keys=[enviado_por_id])
+
+    # Nome de quem enviou, lido pelo DocumentoResponse. Mandamos só o nome,
+    # não o usuário inteiro, para não expor e-mail e perfil (Spec 005)
+    @property
+    def enviado_por_nome(self) -> str:
+        return self.enviado_por.nome

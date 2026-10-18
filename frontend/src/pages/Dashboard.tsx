@@ -524,7 +524,11 @@ export default function Dashboard() {
             <div>
               <strong>📄 {documento.tipo}</strong>
               <div style={styles.textoSecundario}>
-                {documento.nome_arquivo} · {documento.paginas} {documento.paginas === 1 ? "página" : "páginas"} · {formatarTamanho(documento.tamanho)} · {new Date(documento.enviado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                {documento.nome_arquivo} · {documento.paginas} {documento.paginas === 1 ? "página" : "páginas"} · {formatarTamanho(documento.tamanho)}
+              </div>
+              {/* Quando e quem enviou (issue #73); hora de Brasília para 23:50 não virar o dia seguinte */}
+              <div style={styles.textoSecundario}>
+                Enviada em {new Date(documento.enviado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às {new Date(documento.enviado_em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })} por {documento.enviado_por_nome}
               </div>
             </div>
             {podeBaixar && (
