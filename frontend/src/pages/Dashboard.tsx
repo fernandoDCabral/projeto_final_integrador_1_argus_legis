@@ -248,19 +248,24 @@ export default function Dashboard() {
 
   const handleAssumirProcesso = async () => {
     const processo = processoEmPrevia;
+
+    // Assumir sem data deixaria o processo sem prazo e sem como informar depois
+    if (!dataPublicacaoAssumir) {
+      setErroPrevia("Informe a data da publicação para assumir.");
+      return;
+    }
+
     try {
       await api.patch(`/processos/${processo.id}`, { responsavel_id: user?.id });
 
       // Prazo só nasce da publicação (Spec 002). Sempre cria um novo: o
       // prazos[0] pode ser um Prazo Inicial antigo, já finalizado
-      if (dataPublicacaoAssumir) {
-        await api.post('/prazos/', {
-          processo_id: processo.id,
-          descricao: `Prazo da publicação (${processo.tipo_processo})`,
-          data_publicacao: dataPublicacaoAssumir,
-          finalizado: false
-        });
-      }
+      await api.post('/prazos/', {
+        processo_id: processo.id,
+        descricao: `Prazo da publicação (${processo.tipo_processo})`,
+        data_publicacao: dataPublicacaoAssumir,
+        finalizado: false
+      });
 
       setProcessoEmPrevia(null);
       setAviso({ tipo: "sucesso", texto: "Processo assumido!" });
@@ -1395,7 +1400,7 @@ export default function Dashboard() {
 
             {!processoEmPrevia.responsavel && (
               <div style={{ marginTop: "15px" }}>
-                <label style={styles.label}>Data da publicação no Diário (opcional)</label>
+                <label style={styles.label}>Data da publicação no Diário <span style={{ color: "#c0392b" }}>*</span></label>
                 <input
                   type="date"
                   style={styles.input}
@@ -1403,8 +1408,9 @@ export default function Dashboard() {
                   onChange={e => setDataPublicacaoAssumir(e.target.value)}
                 />
                 <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
-                  {processoEmPrevia.data_publicacao_datajud && "Sugerida pela publicação encontrada no DataJud. "}
-                  Confira no DJEN antes de assumir. Sem a data, o processo fica sem prazo até você informar a publicação.
+                  {processoEmPrevia.data_publicacao_datajud
+                    ? "Sugerida pela publicação encontrada no DataJud. Confira no DJEN; se a data certa for outra, troque aqui."
+                    : "Informe a data em que a publicação saiu no Diário (confira no DJEN)."}
                 </div>
               </div>
             )}
