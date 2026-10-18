@@ -17,7 +17,15 @@ class Cliente(Base):
     cnpj: Mapped[Optional[str]] = mapped_column(String(14))
     email: Mapped[str] = mapped_column(String(100))
     telefone: Mapped[str] = mapped_column(String(20))
-    endereco: Mapped[str] = mapped_column(String(255))
+    # Endereço em campos separados (Spec 006). Tudo nullable por causa dos
+    # clientes antigos, que só têm o texto livre copiado para logradouro
+    cep: Mapped[Optional[str]] = mapped_column(String(8))
+    logradouro: Mapped[Optional[str]] = mapped_column(String(255))
+    numero: Mapped[Optional[str]] = mapped_column(String(20))
+    complemento: Mapped[Optional[str]] = mapped_column(String(100))
+    bairro: Mapped[Optional[str]] = mapped_column(String(100))
+    cidade: Mapped[Optional[str]] = mapped_column(String(100))
+    uf: Mapped[Optional[str]] = mapped_column(String(2))
 
     # Foreign key
     escritorio_id: Mapped[int] = mapped_column(ForeignKey("escritorios.id"))

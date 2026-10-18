@@ -8,3 +8,4 @@ from .autenticacao import router as autenticacoes_router
 from .registro import router as registro_router
 from .datajud import router as datajud_router
 from .documentos import router as documentos_router
+from .cep import router as cep_router
