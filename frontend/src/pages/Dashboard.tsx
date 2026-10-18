@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../services/api";
 import type { Cliente, TipoPessoa } from "../types/cliente";
@@ -25,7 +25,29 @@ const FORM_CLIENTE_VAZIO = {
   documento: "",
   email: "",
   telefone: "",
-  endereco: "",
+  // Endereço em campos separados (Spec 006)
+  cep: "",
+  logradouro: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  uf: "",
+};
+
+// Máscara 00000-000, como as de formatos.ts; o backend guarda só os dígitos
+const formatarCep = (valor: string) =>
+  somenteDigitos(valor).slice(0, 8).replace(/^(\d{5})(\d)/, "$1-$2");
+
+// "Rua, nº, compl — Bairro, Cidade/UF — CEP 00000-000", pulando o que estiver vazio.
+// Cliente antigo só tem o texto antigo no logradouro, então aparece só ele
+const enderecoDoCliente = (cliente: any) => {
+  if (!cliente) return "";
+  const rua = [cliente.logradouro, cliente.numero, cliente.complemento].filter(Boolean).join(", ");
+  const cidadeUf = [cliente.cidade, cliente.uf].filter(Boolean).join("/");
+  const bairroCidade = [cliente.bairro, cidadeUf].filter(Boolean).join(", ");
+  const cep = cliente.cep ? `CEP ${formatarCep(cliente.cep)}` : "";
+  return [rua, bairroCidade, cep].filter(Boolean).join(" — ");
 };
 
 export default function Dashboard() {
@@ -82,6 +104,12 @@ export default function Dashboard() {
     cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: ""
   });
   const [formCliente, setFormCliente] = useState(FORM_CLIENTE_VAZIO);
+
+  // Busca do CEP no cadastro de cliente (Spec 006)
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [avisoCep, setAvisoCep] = useState("");
+  // Depois de achar o CEP, o cursor vai para o Número, que o CEP não traz
+  const campoNumeroRef = useRef<HTMLInputElement>(null);
 
   // Consulta ao DataJud dentro do modal de processo
   const [consultaDatajud, setConsultaDatajud] = useState<ConsultaDatajud | null>(null);
@@ -318,6 +346,33 @@ export default function Dashboard() {
     }
   };
 
+  // Chamada ao completar os 8 dígitos do CEP. Sobrescreve rua, bairro, cidade e UF,
+  // mas não mexe em número e complemento. Tudo continua editável à mão
+  const buscarCep = async (cep: string) => {
+    setBuscandoCep(true);
+    setAvisoCep("");
+    try {
+      const { data } = await api.get(`/cep/${cep}`);
+      // Forma com função: o usuário pode ter digitado no Número durante a busca
+      setFormCliente(form => ({
+        ...form,
+        logradouro: data.logradouro,
+        bairro: data.bairro,
+        cidade: data.cidade,
+        uf: data.uf,
+      }));
+      campoNumeroRef.current?.focus();
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        setAvisoCep("CEP não encontrado. Preencha o endereço à mão.");
+      } else {
+        setAvisoCep("Não foi possível consultar o CEP agora. Preencha o endereço à mão.");
+      }
+    } finally {
+      setBuscandoCep(false);
+    }
+  };
+
   const handleCadastrarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     const ehFisica = formCliente.tipo_pessoa === "FISICA";
@@ -340,12 +395,19 @@ export default function Dashboard() {
         cnpj: ehFisica ? null : documento,
         email: formCliente.email,
         telefone: formCliente.telefone,
-        endereco: formCliente.endereco,
+        cep: somenteDigitos(formCliente.cep),
+        logradouro: formCliente.logradouro,
+        numero: formCliente.numero,
+        complemento: formCliente.complemento || null,
+        bairro: formCliente.bairro,
+        cidade: formCliente.cidade,
+        uf: formCliente.uf,
       });
 
       setAviso({ tipo: "sucesso", texto: `Cliente "${data.nome}" cadastrado!` });
       setModalClienteAberto(false);
       setFormCliente(FORM_CLIENTE_VAZIO);
+      setAvisoCep("");
       await carregarDados();
     } catch (error) {
       setAviso({
@@ -966,8 +1028,52 @@ export default function Dashboard() {
                 <input required style={styles.input} type="text" placeholder="(00) 00000-0000" value={formCliente.telefone} onChange={e => setFormCliente({...formCliente, telefone: formatarTelefone(e.target.value)})} />
               </div>
               <div>
-                <label style={styles.label}>Endereço</label>
-                <input required style={styles.input} type="text" placeholder="Rua, nº, bairro, cidade/UF" value={formCliente.endereco} onChange={e => setFormCliente({...formCliente, endereco: e.target.value})} />
+                <label style={styles.label}>CEP</label>
+                <input
+                  required
+                  style={styles.input}
+                  type="text"
+                  placeholder="00000-000"
+                  value={formCliente.cep}
+                  onChange={e => {
+                    const cep = formatarCep(e.target.value);
+                    setFormCliente({...formCliente, cep});
+                    setAvisoCep("");
+                    // Busca sozinha quando o CEP fica completo (e só se ele mudou)
+                    const digitosCep = somenteDigitos(cep);
+                    if (digitosCep.length === 8 && digitosCep !== somenteDigitos(formCliente.cep)) buscarCep(digitosCep);
+                  }}
+                />
+                {buscandoCep && <small style={styles.textoSecundario}>Buscando CEP...</small>}
+                {avisoCep && <div style={{ ...styles.avisoInline, marginTop: "4px" }}>{avisoCep}</div>}
+              </div>
+              <div>
+                <label style={styles.label}>Rua</label>
+                <input required style={styles.input} type="text" value={formCliente.logradouro} onChange={e => setFormCliente({...formCliente, logradouro: e.target.value})} />
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Número</label>
+                  <input required ref={campoNumeroRef} style={styles.input} type="text" placeholder="123 ou s/n" value={formCliente.numero} onChange={e => setFormCliente({...formCliente, numero: e.target.value})} />
+                </div>
+                <div style={{ flex: 2 }}>
+                  <label style={styles.label}>Complemento (opcional)</label>
+                  <input style={styles.input} type="text" placeholder="Apto, bloco, sala..." value={formCliente.complemento} onChange={e => setFormCliente({...formCliente, complemento: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label style={styles.label}>Bairro</label>
+                <input required style={styles.input} type="text" value={formCliente.bairro} onChange={e => setFormCliente({...formCliente, bairro: e.target.value})} />
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ flex: 3 }}>
+                  <label style={styles.label}>Cidade</label>
+                  <input required style={styles.input} type="text" value={formCliente.cidade} onChange={e => setFormCliente({...formCliente, cidade: e.target.value})} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>UF</label>
+                  <input required style={styles.input} type="text" maxLength={2} placeholder="CE" value={formCliente.uf} onChange={e => setFormCliente({...formCliente, uf: e.target.value.toUpperCase()})} />
+                </div>
               </div>
               <div style={styles.linhaBotoes}>
                 <button
@@ -975,6 +1081,7 @@ export default function Dashboard() {
                   onClick={() => {
                     setModalClienteAberto(false);
                     setFormCliente(FORM_CLIENTE_VAZIO);
+                    setAvisoCep("");
                   }}
                   style={styles.btnCancelar}
                 >
@@ -1204,7 +1311,7 @@ export default function Dashboard() {
             <span style={styles.label}>E-mail:</span><span style={styles.valor}>{processo.cliente?.email}</span>
           </div>
           <div style={{ fontSize: "14px" }}>
-            <span style={styles.label}>Endereço:</span><span style={styles.valor}>{processo.cliente?.endereco}</span>
+            <span style={styles.label}>Endereço:</span><span style={styles.valor}>{enderecoDoCliente(processo.cliente)}</span>
           </div>
         </div>
       </div>
