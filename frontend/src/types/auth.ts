@@ -8,6 +8,7 @@ export interface UsuarioLogado{
     email: string;
     nome: string;
     perfil: string;
+    oab?: string | null;
 }
 
 export interface AuthResponse{
