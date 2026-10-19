@@ -25,6 +25,13 @@ export const formatarTelefone = (valor: string) => {
   return d.replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
 };
 
+// CNJ pontuado: NNNNNNN-DD.AAAA.J.TR.OOOO. Se não tiver 20 dígitos, devolve como veio
+export const formatarCnj = (valor: string) => {
+  const d = (valor ?? '').replace(/\D/g, '');
+  if (d.length !== 20) return valor ?? '';
+  return d.replace(/^(\d{7})(\d{2})(\d{4})(\d)(\d{2})(\d{4})$/, '$1-$2.$3.$4.$5.$6');
+};
+
 export const somenteDigitos = (valor: string) => valor.replace(/\D/g, '');
 
 // Mostra o documento que o cliente realmente tem, já formatado
