@@ -11,10 +11,64 @@ import {
   documentoDoCliente,
   rotuloTipoPessoa,
   formatarDataSimples,
+  formatarCnj,
 } from "../utils/formatos";
 
 type AbaAdmin = "cadastro" | "clientes" | "processos";
 type Aviso = { tipo: "sucesso" | "erro"; texto: string } | null;
+
+// Identidade visual da Spec 007: petróleo, areia e cobre
+const CORES = {
+  marca: "#1E3D4C",
+  marcaTexto: "#F1ECE2",
+  marcaSuave: "#B7C6CD",
+  fundo: "#F3EFE7",
+  papel: "#FFFFFF",
+  tinta: "#17242B",
+  suave: "#55626A",
+  linha: "#DDD6C9",
+  detalhe: "#D49A6E",
+  detalheTexto: "#A35A2E",
+  // Etiquetas de prazo: fundo, texto e a cor da bolinha da legenda do calendário
+  vencido: { fundo: "#F4E1DF", texto: "#7E2424", bola: "#B4473F" },
+  urgente: { fundo: "#F6E6CF", texto: "#7A420C", bola: "#C27A2C" },
+  emdia: { fundo: "#E1EAEE", texto: "#1E3D4C", bola: "#4C7385" },
+  neutro: { fundo: "#ECE8E0", texto: "#4A4F53", bola: "#8A8F92" },
+};
+const FONTE_TITULO = '"EB Garamond", Georgia, serif';
+
+type Situacao = "vencido" | "urgente" | "emdia" | "neutro";
+type AbaAdvogado = "painel" | "calendario" | "processos" | "piscina";
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const DIAS_DA_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+// Ícones de traço fino, só decorativos (por isso aria-hidden)
+const icone = (desenho: React.ReactNode, tamanho = 18, traco = 1.6) => (
+  <svg width={tamanho} height={tamanho} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={traco} aria-hidden="true" style={{ flexShrink: 0 }}>
+    {desenho}
+  </svg>
+);
+const ICONES = {
+  painel: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>,
+  calendario: <><rect x="3" y="5" width="18" height="16" rx="1" /><path d="M3 10h18M8 3v4M16 3v4" /></>,
+  pasta: <path d="M4 6h6l2 2h8v11H4z" />,
+  piscina: <path d="M4 7h16M4 12h16M4 17h10" />,
+  equipe: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" /><path d="M16 5.2a3.3 3.3 0 0 1 0 6.1M18 14.4c2.1.7 3.5 2.5 3.5 5.6" /></>,
+  clientes: <><rect x="3" y="5" width="18" height="14" rx="1" /><circle cx="9" cy="11" r="2.2" /><path d="M5.5 16c.6-1.6 1.9-2.4 3.5-2.4s2.9.8 3.5 2.4M14 10h4M14 14h4" /></>,
+  anterior: <path d="M15 6l-6 6 6 6" />,
+  proximo: <path d="M9 6l6 6-6 6" />,
+  busca: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
+  fechar: <path d="M6 6l12 12M18 6L6 18" />,
+  mais: <path d="M12 5v14M5 12h14" />,
+};
+
+// Etiqueta de situação do prazo (vencido, urgente, em dia ou neutro)
+const estiloEtiqueta = (tipo: Situacao) => ({
+  ...styles.etiqueta,
+  backgroundColor: CORES[tipo].fundo,
+  color: CORES[tipo].texto,
+});
 
 // Mesma lista fixa do backend (app/routes/documentos.py) — Spec 003
 const TIPOS_DOCUMENTO = ["Petição inicial", "Contestação", "Réplica", "Recurso", "Petição (outras)"];
@@ -64,8 +118,27 @@ export default function Dashboard() {
   const [erroPrevia, setErroPrevia] = useState("");
 
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
-  const [abaAdvogado, setAbaAdvogado] = useState<"painel" | "processos">("painel");
+  const [abaAdvogado, setAbaAdvogado] = useState<AbaAdvogado>("painel");
   const [processoAberto, setProcessoAberto] = useState<any | null>(null);
+
+  // Calendário (Painel e item do menu): primeiro dia do mês que está na tela
+  const [mesCalendario, setMesCalendario] = useState(() => {
+    const hoje = new Date();
+    return new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  });
+
+  // Meus processos: busca e ordenação são feitas na própria tela
+  const [busca, setBusca] = useState("");
+  const [ordem, setOrdem] = useState<"vencimento" | "recentes">("vencimento");
+
+  // Estilo inline não tem media query: no celular o menu vai para cima por esta largura
+  const [largura, setLargura] = useState(window.innerWidth);
+  const celular = largura < 700;
+  useEffect(() => {
+    const aoRedimensionar = () => setLargura(window.innerWidth);
+    window.addEventListener("resize", aoRedimensionar);
+    return () => window.removeEventListener("resize", aoRedimensionar);
+  }, []);
 
   // Peças do processo aberto na prévia ou no processo completo (Spec 003)
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -82,6 +155,7 @@ export default function Dashboard() {
 
   // Estados para o Admin
   const [abaAdmin, setAbaAdmin] = useState<AbaAdmin>("cadastro");
+  const [filtroProcessos, setFiltroProcessos] = useState<"todos" | "piscina" | "vencendo">("todos");
   const [advogados, setAdvogados] = useState<any[]>([]);
   const [processosAdmin, setProcessosAdmin] = useState<any[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -175,6 +249,7 @@ export default function Dashboard() {
   // Depende só do id para não pular para o topo ao atualizar o DataJud
   useEffect(() => {
     document.querySelector("main")?.scrollTo(0, 0);
+    window.scrollTo(0, 0);
   }, [abaAdvogado, processoAberto?.id]);
 
   // Carrega as peças do processo aberto (o completo tem prioridade sobre a prévia)
@@ -316,6 +391,7 @@ export default function Dashboard() {
     try {
       await api.post(`/processos/${processoId}/liberar`);
       setAviso({ tipo: "sucesso", texto: "Processo devolvido à piscina." });
+      setProcessoAberto(null);
       await carregarDados();
     } catch (error) {
       setAviso({ tipo: "erro", texto: mensagemDeErro(error, "Não foi possível liberar este processo.") });
@@ -524,15 +600,17 @@ export default function Dashboard() {
       return new Date(ano, mes - 1, dia);
   };
 
-  const analisarPrazo = (dataVencimento?: string) => {
-      if (!dataVencimento) return { cor: "#95a5a6", texto: "Sem prazo", dias: null };
+  const analisarPrazo = (dataVencimento?: string): { tipo: Situacao; cor: string; texto: string; dias: number | null } => {
+      if (!dataVencimento) return { tipo: "neutro", cor: CORES.neutro.texto, texto: "Sem prazo", dias: null };
       const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
       const vencimento = parseDataLocal(dataVencimento);
       const diffTime = vencimento.getTime() - hoje.getTime();
       const diffDias = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDias < 0) return { cor: "#c0392b", texto: "Vencido", dias: diffDias };
-      if (diffDias <= 3) return { cor: "#f39c12", texto: `Vence em ${diffDias} dias`, dias: diffDias };
-      return { cor: "#27ae60", texto: `Vence em ${diffDias} dias`, dias: diffDias };
+      if (diffDias < 0) return { tipo: "vencido", cor: CORES.vencido.texto, texto: `Vencido há ${-diffDias} ${diffDias === -1 ? "dia" : "dias"}`, dias: diffDias };
+      if (diffDias === 0) return { tipo: "urgente", cor: CORES.urgente.texto, texto: "Vence hoje", dias: diffDias };
+      if (diffDias === 1) return { tipo: "urgente", cor: CORES.urgente.texto, texto: "Vence amanhã", dias: diffDias };
+      if (diffDias <= 3) return { tipo: "urgente", cor: CORES.urgente.texto, texto: `Vence em ${diffDias} dias`, dias: diffDias };
+      return { tipo: "emdia", cor: CORES.emdia.texto, texto: `Vence em ${diffDias} dias`, dias: diffDias };
   };
 
   const formatarData = (dataStr: string) => {
@@ -556,6 +634,51 @@ export default function Dashboard() {
     (processo.prazos ?? [])
       .filter((prazo: any) => !prazo.finalizado)
       .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento))[0];
+
+  // Troca de tela do advogado; fechar o processo aberto evita que as peças dele
+  // apareçam na prévia de outro processo
+  const irPara = (aba: AbaAdvogado) => {
+    setAbaAdvogado(aba);
+    setProcessoAberto(null);
+  };
+
+  // Prazos em aberto dos meus processos ativos, do mais antigo para o mais novo.
+  // Alimentam o resumo, o calendário e os próximos prazos (Spec 007)
+  const prazosAbertos = meusProcessos
+    .filter(p => p.status !== "Encerrado")
+    .flatMap(p => (p.prazos ?? []).filter((prazo: any) => !prazo.finalizado).map((prazo: any) => ({ ...prazo, processo: p })))
+    .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento));
+
+  const mudarMes = (quantos: number) =>
+    setMesCalendario(mes => new Date(mes.getFullYear(), mes.getMonth() + quantos, 1));
+
+  // Busca sem diferenciar maiúscula nem acento
+  const semAcento = (texto: string) =>
+    texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+  // Etiqueta da piscina: lá só existe a estimativa pela publicação do DataJud (Spec 002)
+  const etiquetaDaPiscina = (processo: any): { tipo: Situacao; texto: string } => {
+    if (!processo.prazo_estimado) return { tipo: "neutro", texto: "Sem prazo aberto" };
+    const info = analisarPrazo(processo.prazo_estimado);
+    // Mais de 30 dias vencida: neutra, sem alarme
+    if (estimativaAntiga(processo)) {
+      return { tipo: "neutro", texto: `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao_datajud)})` };
+    }
+    // Venceu, mas há petição depois da publicação: talvez já respondida
+    if (estimativaVencida(processo)) {
+      return { tipo: processo.peticao_apos_publicacao ? "urgente" : "vencido", texto: `Vencido há ${-info.dias!} dias (estimado)` };
+    }
+    return { tipo: info.tipo, texto: `Prazo estimado: ${formatarData(processo.prazo_estimado).slice(0, 5)}` };
+  };
+
+  // Situação do prazo de qualquer processo (tabela e filtros do ADMIN)
+  const prazoDoProcesso = (processo: any): { tipo: Situacao; texto: string } => {
+    if (processo.status === "Encerrado") return { tipo: "neutro", texto: `Encerrado em ${formatarData(processo.encerrado_em)}` };
+    if (!processo.responsavel) return etiquetaDaPiscina(processo);
+    const vencimento = prazoAberto(processo)?.data_vencimento;
+    const info = analisarPrazo(vencimento);
+    return { tipo: info.tipo, texto: vencimento ? `${info.texto} · ${formatarData(vencimento).slice(0, 5)}` : info.texto };
+  };
 
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
 
@@ -581,39 +704,43 @@ export default function Dashboard() {
     const podeBaixar = podeMexer || ehAdmin;
     return (
       <div>
-        {documentos.length > 0 ? documentos.map(documento => (
-          <div key={documento.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", border: "1px solid #eee", padding: "8px", marginTop: "6px" }}>
-            <div>
-              <strong>📄 {documento.tipo}</strong>
-              <div style={styles.textoSecundario}>
-                {documento.nome_arquivo} · {documento.paginas} {documento.paginas === 1 ? "página" : "páginas"} · {formatarTamanho(documento.tamanho)}
-              </div>
-              {/* Quando e quem enviou (issue #73); hora de Brasília para 23:50 não virar o dia seguinte */}
-              <div style={styles.textoSecundario}>
-                Enviada em {new Date(documento.enviado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às {new Date(documento.enviado_em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })} por {documento.enviado_por_nome}
-              </div>
-            </div>
-            {podeBaixar && (
-              <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-                {documentoParaApagar === documento.id ? (
-                  <>
-                    {/* Deixa claro o que o botão faz antes de apagar (issue #72) */}
-                    <span style={{ ...styles.textoSecundario, alignSelf: "center" }}>Apagar esta peça? Não dá para desfazer.</span>
-                    <button onClick={() => handleApagarDocumento(documento.id)} style={styles.btnConfirmarExclusao}>Apagar</button>
-                    <button onClick={() => setDocumentoParaApagar(null)} style={styles.btnMiniNeutro}>Cancelar</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => handleBaixarDocumento(documento)} style={styles.btnMiniNeutro}>⬇️ Baixar</button>
-                    {podeMexer && (
-                      <button onClick={() => setDocumentoParaApagar(documento.id)} style={styles.btnMiniNeutro}>🗑️ Apagar</button>
+        {documentos.length > 0 ? (
+          <ul style={styles.listaLinhas}>
+            {documentos.map((documento, i) => (
+              <li key={documento.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha) }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong>{documento.tipo}</strong>
+                  <span style={styles.segundaLinha}>
+                    {documento.nome_arquivo} · {documento.paginas} {documento.paginas === 1 ? "página" : "páginas"} · {formatarTamanho(documento.tamanho)}
+                  </span>
+                  {/* Quando e quem enviou (issue #73); hora de Brasília para 23:50 não virar o dia seguinte */}
+                  <span style={styles.segundaLinha}>
+                    Enviada em {new Date(documento.enviado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às {new Date(documento.enviado_em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })} por {documento.enviado_por_nome}
+                  </span>
+                </div>
+                {podeBaixar && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "flex-start" }}>
+                    {documentoParaApagar === documento.id ? (
+                      <>
+                        {/* Deixa claro o que o botão faz antes de apagar (issue #72) */}
+                        <span style={{ ...styles.textoSecundario, alignSelf: "center" }}>Apagar esta peça? Não dá para desfazer.</span>
+                        <button onClick={() => handleApagarDocumento(documento.id)} style={styles.btnConfirmarExclusao}>Apagar</button>
+                        <button onClick={() => setDocumentoParaApagar(null)} style={styles.btnMiniNeutro}>Cancelar</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => handleBaixarDocumento(documento)} style={styles.btnMiniNeutro}>Baixar</button>
+                        {podeMexer && (
+                          <button onClick={() => setDocumentoParaApagar(documento.id)} style={styles.btnMiniNeutro}>Apagar</button>
+                        )}
+                      </>
                     )}
-                  </>
+                  </div>
                 )}
-              </div>
-            )}
-          </div>
-        )) : <div style={styles.textoSecundario}>Nenhuma peça enviada.</div>}
+              </li>
+            ))}
+          </ul>
+        ) : <div style={styles.textoSecundario}>Nenhuma peça enviada.</div>}
 
         {!completo && documentos.length > 0 && !ehResponsavel && !ehAdmin && (
           <div style={{ ...styles.textoSecundario, marginTop: "6px", fontSize: "12px" }}>
@@ -622,15 +749,18 @@ export default function Dashboard() {
         )}
 
         {podeMexer && (
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginTop: "12px" }}>
-            <select style={{ ...styles.input, width: "auto", marginBottom: 0 }} value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}>
+          <div style={styles.envio}>
+            <select aria-label="Tipo da peça" style={{ ...styles.input, width: "auto" }} value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}>
               <option value="">Tipo da peça...</option>
               {TIPOS_DOCUMENTO.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
             </select>
             {/* key muda a cada envio para limpar o arquivo escolhido */}
-            <input key={documentos.length} type="file" accept="application/pdf" onChange={e => setArquivoDocumento(e.target.files?.[0] ?? null)} />
-            <button onClick={() => handleEnviarDocumento(processo)} disabled={enviandoDocumento} style={styles.btnMiniNeutro}>
-              {enviandoDocumento ? "Enviando..." : "📤 Enviar peça"}
+            {/* O input nativo fica escondido; o label faz o papel do botão */}
+            <label htmlFor="arquivo-peca" style={{ ...styles.btnSecundario, display: "inline-flex", alignItems: "center", boxSizing: "border-box" }}>Escolher PDF</label>
+            <input id="arquivo-peca" key={documentos.length} type="file" accept="application/pdf" onChange={e => setArquivoDocumento(e.target.files?.[0] ?? null)} style={styles.soParaLeitor} />
+            <span style={styles.textoSecundario}>{arquivoDocumento ? arquivoDocumento.name : "Nenhum arquivo escolhido"}</span>
+            <button onClick={() => handleEnviarDocumento(processo)} disabled={enviandoDocumento} style={styles.btnAcaoBase}>
+              {enviandoDocumento ? "Enviando..." : "Enviar peça"}
             </button>
             <small style={styles.textoSecundario}>Só PDF, até 10 MB.</small>
           </div>
@@ -647,29 +777,31 @@ export default function Dashboard() {
     );
   };
 
-  // Usada no modal do processo e na tela do processo completo
+  // Usada na prévia e na tela do processo completo
   const renderListaPrazos = (prazos: any[]) => (
-    prazos.length > 0 ? prazos.map((prazo) => {
-      const infoPrazo = prazo.finalizado
-        ? { cor: "#95a5a6", texto: "Finalizado" }
-        : analisarPrazo(prazo.data_vencimento);
-      return (
-        <div key={prazo.id} style={{ border: "1px solid #eee", borderLeft: `4px solid ${infoPrazo.cor}`, padding: "8px", marginTop: "6px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-            <strong>{prazo.descricao}</strong>
-            <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
-              {infoPrazo.texto}
-            </span>
-          </div>
-          <div style={styles.textoSecundario}>
-            Vence em {formatarData(prazo.data_vencimento)} ·{" "}
-            {prazo.interno
-              ? "prazo inicial antigo (contava do cadastro)"
-              : `conta da publicação de ${formatarData(prazo.data_publicacao)}`}
-          </div>
-        </div>
-      );
-    }) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>
+    prazos.length > 0 ? (
+      <ul style={styles.listaLinhas}>
+        {prazos.map((prazo, i) => {
+          const infoPrazo = analisarPrazo(prazo.data_vencimento);
+          const verbo = infoPrazo.dias! < 0 ? "venceu" : "vence";
+          return (
+            <li key={prazo.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha) }}>
+              <div style={{ minWidth: 0 }}>
+                <strong>{prazo.descricao}</strong>
+                <span style={styles.segundaLinha}>
+                  {prazo.interno
+                    ? `Prazo inicial antigo (contava do cadastro) · ${verbo} ${formatarData(prazo.data_vencimento)}`
+                    : `Publicação ${formatarData(prazo.data_publicacao)} · ${verbo} ${formatarData(prazo.data_vencimento)}`}
+                </span>
+              </div>
+              <span style={estiloEtiqueta(prazo.finalizado ? "neutro" : infoPrazo.tipo)}>
+                {prazo.finalizado ? "Finalizado" : infoPrazo.texto}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    ) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>
   );
 
   // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
@@ -721,55 +853,68 @@ export default function Dashboard() {
   );
 
   const renderAbaEquipe = () => (
-    <div>
-      <div style={styles.cabecalhoAba}>
-        <h3 style={styles.tituloAba}>Equipe Jurídica (Advogados)</h3>
-        <button onClick={() => setModalAdvogadoAberto(true)} style={styles.btnAcaoBase}>
-          ➕ Novo Advogado
-        </button>
-      </div>
-      <div style={styles.cardInfo}>
-        <table style={styles.tabela}>
+    <div style={styles.conteudo}>
+      {renderTopo(
+        "Equipe jurídica",
+        `${advogados.length} ${advogados.length === 1 ? "advogado" : "advogados"} no escritório`,
+        <button onClick={() => setModalAdvogadoAberto(true)} style={styles.btnAcaoBase}>{icone(ICONES.mais, 16, 2)}Novo advogado</button>
+      )}
+
+      <section style={styles.cartaoTabela} aria-label="Advogados">
+        <table style={{ ...styles.tabela, minWidth: "640px" }}>
           <thead>
             <tr style={styles.tabelaCabecalho}>
               <th style={styles.th}>Nome</th>
               <th style={styles.th}>E-mail</th>
               <th style={styles.th}>OAB</th>
+              <th style={styles.th}>Processos</th>
             </tr>
           </thead>
           <tbody>
-            {advogados.length > 0 ? advogados.map(adv => (
-              <tr key={adv.id} style={styles.tabelaLinha}>
-                <td style={styles.td}>{adv.nome}</td>
-                <td style={styles.td}>{adv.email}</td>
-                <td style={styles.td}>{adv.oab || "N/A"}</td>
-              </tr>
-            )) : (
-              <tr><td colSpan={3} style={styles.tdVazio}>Nenhum advogado cadastrado.</td></tr>
+            {advogados.length > 0 ? advogados.map(adv => {
+              // Iniciais: primeira letra do primeiro e do último nome
+              const partes = adv.nome.split(" ").filter(Boolean);
+              const iniciais = (partes[0][0] + (partes.length > 1 ? partes[partes.length - 1][0] : "")).toUpperCase();
+              return (
+                <tr key={adv.id} style={styles.tabelaLinha}>
+                  <td style={styles.td}>
+                    <div style={styles.pessoa}>
+                      <span style={styles.inicial} aria-hidden="true">{iniciais}</span>
+                      {adv.nome}
+                    </div>
+                  </td>
+                  <td style={styles.td}>{adv.email}</td>
+                  <td style={{ ...styles.td, fontVariantNumeric: "tabular-nums" }}>{adv.oab || "—"}</td>
+                  <td style={{ ...styles.td, fontVariantNumeric: "tabular-nums" }}>
+                    {processosAdmin.filter((p: any) => p.responsavel?.id === adv.id).length}
+                  </td>
+                </tr>
+              );
+            }) : (
+              <tr><td colSpan={4} style={styles.tdVazio}>Nenhum advogado cadastrado.</td></tr>
             )}
           </tbody>
         </table>
-      </div>
+      </section>
     </div>
   );
 
   const renderAbaClientes = () => (
-    <div>
-      <div style={styles.cabecalhoAba}>
-        <h3 style={styles.tituloAba}>Carteira de Clientes</h3>
-        <button onClick={() => setModalClienteAberto(true)} style={styles.btnAcaoBase}>
-          ➕ Novo Cliente
-        </button>
-      </div>
-      <div style={styles.cardInfo}>
-        <table style={styles.tabela}>
+    <div style={styles.conteudo}>
+      {renderTopo(
+        "Clientes",
+        `${clientes.length} ${clientes.length === 1 ? "cliente" : "clientes"} na carteira`,
+        <button onClick={() => setModalClienteAberto(true)} style={styles.btnAcaoBase}>{icone(ICONES.mais, 16, 2)}Novo cliente</button>
+      )}
+
+      <section style={styles.cartaoTabela} aria-label="Carteira de clientes">
+        <table style={{ ...styles.tabela, minWidth: "560px" }}>
           <thead>
             <tr style={styles.tabelaCabecalho}>
-              <th style={styles.th}>Nome</th>
-              <th style={styles.th}>Documento</th>
+              <th style={styles.th}>Cliente</th>
               <th style={styles.th}>Contato</th>
               <th style={styles.th}>Processos</th>
-              <th style={{ ...styles.th, textAlign: "right" }}>Ações</th>
+              <th style={styles.th}><span style={styles.soParaLeitor}>Ações</span></th>
             </tr>
           </thead>
           <tbody>
@@ -781,20 +926,20 @@ export default function Dashboard() {
               return (
                 <tr key={cliente.id} style={styles.tabelaLinha}>
                   <td style={styles.td}>
-                    <div style={{ fontWeight: "bold" }}>{cliente.nome}</div>
-                    <small style={styles.textoSecundario}>
-                      {rotuloTipoPessoa(cliente.tipo_pessoa)}
-                    </small>
+                    {cliente.nome}
+                    <span style={{ ...styles.segundaLinha, fontVariantNumeric: "tabular-nums" }}>
+                      {cliente.cpf ? "CPF" : "CNPJ"} {documentoDoCliente(cliente)}
+                    </span>
                   </td>
-                  <td style={styles.td}>{documentoDoCliente(cliente)}</td>
                   <td style={styles.td}>
-                    <div>{cliente.email}</div>
-                    <small style={styles.textoSecundario}>
-                      {formatarTelefone(cliente.telefone)}
-                    </small>
+                    {formatarTelefone(cliente.telefone)}
+                    <span style={styles.segundaLinha}>{cliente.email}</span>
+                    <span style={styles.segundaLinha}>
+                      {[cliente.cidade, cliente.uf].filter(Boolean).join("/") || "—"}
+                    </span>
                   </td>
-                  <td style={styles.td}>{qtdProcessos}</td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
+                  <td style={{ ...styles.td, fontVariantNumeric: "tabular-nums" }}>{qtdProcessos}</td>
+                  <td style={styles.tdAcoes}>
                     {confirmando ? (
                       <span style={{ display: "inline-flex", gap: "6px" }}>
                         <button
@@ -823,7 +968,7 @@ export default function Dashboard() {
               );
             }) : (
               <tr>
-                <td colSpan={5} style={styles.tdVazio}>
+                <td colSpan={4} style={styles.tdVazio}>
                   Nenhum cliente cadastrado. Cadastre um cliente antes de abrir
                   um processo.
                 </td>
@@ -831,100 +976,128 @@ export default function Dashboard() {
             )}
           </tbody>
         </table>
-      </div>
+      </section>
     </div>
   );
 
-  const renderAbaProcessos = () => (
-    <div>
-      <div style={styles.cabecalhoAba}>
-        <h3 style={styles.tituloAba}>Todos os Processos do Escritório</h3>
-        <button onClick={() => setModalProcessoAberto(true)} style={styles.btnAcaoBase}>
-          ➕ Novo Processo
-        </button>
-      </div>
-      <div style={styles.cardInfo}>
-        <table style={styles.tabela}>
-          <thead>
-            <tr style={styles.tabelaCabecalho}>
-              <th style={styles.th}>CNJ</th>
-              <th style={styles.th}>Título / Cliente</th>
-              <th style={styles.th}>Tribunal / Tipo</th>
-              <th style={styles.th}>Responsável / Status</th>
-              <th style={styles.th}>Peças</th>
-              <th style={{ ...styles.th, textAlign: "right" }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {processosAdmin.length > 0 ? processosAdmin.map(proc => {
-              const confirmando = processoParaExcluir === proc.id;
-              return (
-              <React.Fragment key={proc.id}>
-              <tr style={styles.tabelaLinha}>
-                <td style={{ ...styles.td, fontWeight: "bold" }}>{proc.cnj}</td>
-                <td style={styles.td}>
-                  <div>{proc.titulo}</div>
-                  <small style={styles.textoSecundario}>
-                    Cliente: {proc.cliente?.nome || "—"}
-                  </small>
-                </td>
-                <td style={styles.td}>
-                  <div>{proc.tribunal}</div>
-                  <small style={styles.textoSecundario}>{proc.tipo_processo}</small>
-                </td>
-                <td style={styles.td}>
-                  {proc.responsavel ? (
-                    <span style={styles.badgeAtivo}>✅ {proc.responsavel.nome}</span>
-                  ) : (
-                    <span style={styles.badgePiscina}>⚠️ Aguardando Adoção</span>
-                  )}
-                  {proc.status === "Encerrado" && <div style={{ marginTop: "4px" }}>{renderSeloStatus(proc)}</div>}
-                </td>
-                <td style={styles.td}>
-                  <button
-                    onClick={() => setProcessoPecasAdmin(processoPecasAdmin === proc.id ? null : proc.id)}
-                    style={styles.btnMiniNeutro}
-                  >
-                    {processoPecasAdmin === proc.id ? "Fechar" : "📄 Peças"}
-                  </button>
-                </td>
-                <td style={{ ...styles.td, textAlign: "right" }}>
-                  {!proc.responsavel && (
-                    confirmando ? (
-                      <span style={{ display: "inline-flex", gap: "6px" }}>
-                        <button onClick={() => handleExcluirProcesso(proc.id)} style={styles.btnConfirmarExclusao}>
-                          Confirmar
-                        </button>
-                        <button onClick={() => setProcessoParaExcluir(null)} style={styles.btnMiniNeutro}>
-                          Cancelar
-                        </button>
-                      </span>
-                    ) : (
-                      <button onClick={() => setProcessoParaExcluir(proc.id)} style={styles.btnMiniNeutro}>
-                        Excluir
-                      </button>
-                    )
-                  )}
-                </td>
+  const renderAbaProcessos = () => {
+    const naPiscina = processosAdmin.filter((p: any) => !p.responsavel && p.status !== "Encerrado").length;
+    // Filtros: todos, só a piscina, ou o prazo que já venceu / vence em até 3 dias
+    const visiveis = processosAdmin.filter((p: any) => {
+      if (filtroProcessos === "piscina") return !p.responsavel && p.status !== "Encerrado";
+      if (filtroProcessos === "vencendo") return ["vencido", "urgente"].includes(prazoDoProcesso(p).tipo);
+      return true;
+    });
+    const filtros = [
+      { chave: "todos", rotulo: "Todos" },
+      { chave: "piscina", rotulo: "Na piscina" },
+      { chave: "vencendo", rotulo: "Com prazo vencendo" },
+    ] as const;
+
+    return (
+      <div style={styles.conteudo}>
+        {renderTopo(
+          "Processos do escritório",
+          `${processosAdmin.length} ${processosAdmin.length === 1 ? "processo" : "processos"} · ${naPiscina} aguardando advogado na piscina`,
+          <button onClick={() => setModalProcessoAberto(true)} style={styles.btnAcaoBase}>{icone(ICONES.mais, 16, 2)}Novo processo</button>
+        )}
+
+        <div style={{ ...styles.abasOrdem, alignSelf: "flex-start", flexWrap: "wrap" }} role="group" aria-label="Filtrar">
+          {filtros.map(filtro => (
+            <button
+              key={filtro.chave}
+              type="button"
+              aria-pressed={filtroProcessos === filtro.chave}
+              onClick={() => setFiltroProcessos(filtro.chave)}
+              style={filtroProcessos === filtro.chave ? styles.abaOrdemAtiva : styles.abaOrdem}
+            >
+              {filtro.rotulo}
+            </button>
+          ))}
+        </div>
+
+        <section style={styles.cartaoTabela} aria-label="Processos">
+          <table style={{ ...styles.tabela, minWidth: "900px" }}>
+            <thead>
+              <tr style={styles.tabelaCabecalho}>
+                <th style={styles.th}>Processo</th>
+                <th style={styles.th}>Cliente</th>
+                <th style={styles.th}>Tribunal</th>
+                <th style={styles.th}>Responsável</th>
+                <th style={styles.th}>Prazo</th>
+                <th style={styles.th}><span style={styles.soParaLeitor}>Ações</span></th>
               </tr>
-              {/* Peças do processo abertas embaixo da linha (Spec 003) */}
-              {processoPecasAdmin === proc.id && (
-                <tr>
-                  <td colSpan={6} style={{ ...styles.td, fontSize: "13px" }}>
-                    {renderPecas(proc, false)}
-                  </td>
-                </tr>
+            </thead>
+            <tbody>
+              {visiveis.length > 0 ? visiveis.map(proc => {
+                const confirmando = processoParaExcluir === proc.id;
+                const prazoProc = prazoDoProcesso(proc);
+                return (
+                  <React.Fragment key={proc.id}>
+                    <tr style={styles.tabelaLinha}>
+                      <td style={styles.td}>
+                        <span style={styles.cnjTabela}>{formatarCnj(proc.cnj)}</span>
+                        <span style={styles.segundaLinha}>{proc.titulo}</span>
+                      </td>
+                      <td style={styles.td}>{proc.cliente?.nome || "—"}</td>
+                      <td style={styles.td}>
+                        {proc.tribunal}
+                        <span style={styles.segundaLinha}>{proc.tipo_processo}</span>
+                      </td>
+                      <td style={styles.td}>
+                        {proc.responsavel ? proc.responsavel.nome : (
+                          <span style={{ ...estiloEtiqueta("urgente"), backgroundColor: CORES.papel, border: `1px dashed ${CORES.urgente.bola}` }}>Na piscina</span>
+                        )}
+                      </td>
+                      <td style={styles.td}><span style={estiloEtiqueta(prazoProc.tipo)}>{prazoProc.texto}</span></td>
+                      <td style={styles.tdAcoes}>
+                        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => setProcessoPecasAdmin(processoPecasAdmin === proc.id ? null : proc.id)}
+                            style={styles.btnMiniNeutro}
+                          >
+                            {processoPecasAdmin === proc.id ? "Fechar" : "Peças"}
+                          </button>
+                          {!proc.responsavel && (
+                            confirmando ? (
+                              <>
+                                <button onClick={() => handleExcluirProcesso(proc.id)} style={styles.btnConfirmarExclusao}>
+                                  Confirmar
+                                </button>
+                                <button onClick={() => setProcessoParaExcluir(null)} style={styles.btnMiniNeutro}>
+                                  Cancelar
+                                </button>
+                              </>
+                            ) : (
+                              <button onClick={() => setProcessoParaExcluir(proc.id)} style={styles.btnMiniNeutro}>
+                                Excluir
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Peças do processo abertas embaixo da linha (Spec 003) */}
+                    {processoPecasAdmin === proc.id && (
+                      <tr>
+                        <td colSpan={6} style={{ ...styles.td, backgroundColor: "#FAF8F3" }}>
+                          {renderPecas(proc, false)}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              }) : (
+                <tr><td colSpan={6} style={styles.tdVazio}>
+                  {processosAdmin.length > 0 ? "Nenhum processo neste filtro." : "Nenhum processo cadastrado neste escritório."}
+                </td></tr>
               )}
-              </React.Fragment>
-              );
-            }) : (
-              <tr><td colSpan={6} style={styles.tdVazio}>Nenhum processo cadastrado neste escritório.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </section>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderPainelAdmin = () => (
     <div>
@@ -939,20 +1112,20 @@ export default function Dashboard() {
             <h3 style={styles.modalTituloDourado}>Cadastrar Advogado</h3>
             <form onSubmit={handleCadastrarAdvogado} style={styles.form}>
               <div>
-                <label style={styles.label}>Nome Completo</label>
-                <input required style={styles.input} type="text" value={formUsuario.nome} onChange={e => setFormUsuario({...formUsuario, nome: e.target.value})} />
+                <label htmlFor="campo-1" style={styles.label}>Nome Completo</label>
+                <input id="campo-1" required style={styles.input} type="text" value={formUsuario.nome} onChange={e => setFormUsuario({...formUsuario, nome: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>E-mail</label>
-                <input required style={styles.input} type="email" value={formUsuario.email} onChange={e => setFormUsuario({...formUsuario, email: e.target.value})} />
+                <label htmlFor="campo-2" style={styles.label}>E-mail</label>
+                <input id="campo-2" required style={styles.input} type="email" value={formUsuario.email} onChange={e => setFormUsuario({...formUsuario, email: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>Senha de Acesso</label>
-                <input required style={styles.input} type="password" value={formUsuario.senha} onChange={e => setFormUsuario({...formUsuario, senha: e.target.value})} />
+                <label htmlFor="campo-3" style={styles.label}>Senha de Acesso</label>
+                <input id="campo-3" required style={styles.input} type="password" value={formUsuario.senha} onChange={e => setFormUsuario({...formUsuario, senha: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>Número da OAB</label>
-                <input required style={styles.input} type="text" value={formUsuario.oab} onChange={e => setFormUsuario({...formUsuario, oab: e.target.value})} />
+                <label htmlFor="campo-4" style={styles.label}>Número da OAB</label>
+                <input id="campo-4" required style={styles.input} type="text" value={formUsuario.oab} onChange={e => setFormUsuario({...formUsuario, oab: e.target.value})} />
               </div>
               <div style={styles.linhaBotoes}>
                 <button
@@ -979,8 +1152,8 @@ export default function Dashboard() {
             <h3 style={styles.modalTituloAzul}>Cadastrar Cliente</h3>
             <form onSubmit={handleCadastrarCliente} style={styles.form}>
               <div>
-                <label style={styles.label}>Tipo de Pessoa</label>
-                <select
+                <label htmlFor="campo-5" style={styles.label}>Tipo de Pessoa</label>
+                <select id="campo-5"
                   required
                   style={styles.input}
                   value={formCliente.tipo_pessoa}
@@ -995,16 +1168,16 @@ export default function Dashboard() {
                 </select>
               </div>
               <div>
-                <label style={styles.label}>
+                <label htmlFor="campo-6" style={styles.label}>
                   {formCliente.tipo_pessoa === "FISICA" ? "Nome Completo" : "Razão Social"}
                 </label>
-                <input required style={styles.input} type="text" value={formCliente.nome} onChange={e => setFormCliente({...formCliente, nome: e.target.value})} />
+                <input id="campo-6" required style={styles.input} type="text" value={formCliente.nome} onChange={e => setFormCliente({...formCliente, nome: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>
+                <label htmlFor="campo-7" style={styles.label}>
                   {formCliente.tipo_pessoa === "FISICA" ? "CPF" : "CNPJ"}
                 </label>
-                <input
+                <input id="campo-7"
                   required
                   style={styles.input}
                   type="text"
@@ -1020,16 +1193,17 @@ export default function Dashboard() {
                 />
               </div>
               <div>
-                <label style={styles.label}>E-mail</label>
-                <input required style={styles.input} type="email" value={formCliente.email} onChange={e => setFormCliente({...formCliente, email: e.target.value})} />
+                <label htmlFor="campo-8" style={styles.label}>E-mail</label>
+                <input id="campo-8" required style={styles.input} type="email" value={formCliente.email} onChange={e => setFormCliente({...formCliente, email: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>Telefone</label>
-                <input required style={styles.input} type="text" placeholder="(00) 00000-0000" value={formCliente.telefone} onChange={e => setFormCliente({...formCliente, telefone: formatarTelefone(e.target.value)})} />
+                <label htmlFor="campo-9" style={styles.label}>Telefone</label>
+                <input id="campo-9" required style={styles.input} type="text" placeholder="(00) 00000-0000" value={formCliente.telefone} onChange={e => setFormCliente({...formCliente, telefone: formatarTelefone(e.target.value)})} />
               </div>
+              <div style={styles.secao}>Endereço</div>
               <div>
-                <label style={styles.label}>CEP</label>
-                <input
+                <label htmlFor="campo-10" style={styles.label}>CEP</label>
+                <input id="campo-10"
                   required
                   style={styles.input}
                   type="text"
@@ -1048,31 +1222,31 @@ export default function Dashboard() {
                 {avisoCep && <div style={{ ...styles.avisoInline, marginTop: "4px" }}>{avisoCep}</div>}
               </div>
               <div>
-                <label style={styles.label}>Rua</label>
-                <input required style={styles.input} type="text" value={formCliente.logradouro} onChange={e => setFormCliente({...formCliente, logradouro: e.target.value})} />
+                <label htmlFor="campo-11" style={styles.label}>Rua</label>
+                <input id="campo-11" required style={styles.input} type="text" value={formCliente.logradouro} onChange={e => setFormCliente({...formCliente, logradouro: e.target.value})} />
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <div style={{ flex: 1 }}>
-                  <label style={styles.label}>Número</label>
-                  <input required ref={campoNumeroRef} style={styles.input} type="text" placeholder="123 ou s/n" value={formCliente.numero} onChange={e => setFormCliente({...formCliente, numero: e.target.value})} />
+                  <label htmlFor="campo-12" style={styles.label}>Número</label>
+                  <input id="campo-12" required ref={campoNumeroRef} style={styles.input} type="text" placeholder="123 ou s/n" value={formCliente.numero} onChange={e => setFormCliente({...formCliente, numero: e.target.value})} />
                 </div>
                 <div style={{ flex: 2 }}>
-                  <label style={styles.label}>Complemento (opcional)</label>
-                  <input style={styles.input} type="text" placeholder="Apto, bloco, sala..." value={formCliente.complemento} onChange={e => setFormCliente({...formCliente, complemento: e.target.value})} />
+                  <label htmlFor="campo-13" style={styles.label}>Complemento (opcional)</label>
+                  <input id="campo-13" style={styles.input} type="text" placeholder="Apto, bloco, sala..." value={formCliente.complemento} onChange={e => setFormCliente({...formCliente, complemento: e.target.value})} />
                 </div>
               </div>
               <div>
-                <label style={styles.label}>Bairro</label>
-                <input required style={styles.input} type="text" value={formCliente.bairro} onChange={e => setFormCliente({...formCliente, bairro: e.target.value})} />
+                <label htmlFor="campo-14" style={styles.label}>Bairro</label>
+                <input id="campo-14" required style={styles.input} type="text" value={formCliente.bairro} onChange={e => setFormCliente({...formCliente, bairro: e.target.value})} />
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <div style={{ flex: 3 }}>
-                  <label style={styles.label}>Cidade</label>
-                  <input required style={styles.input} type="text" value={formCliente.cidade} onChange={e => setFormCliente({...formCliente, cidade: e.target.value})} />
+                  <label htmlFor="campo-15" style={styles.label}>Cidade</label>
+                  <input id="campo-15" required style={styles.input} type="text" value={formCliente.cidade} onChange={e => setFormCliente({...formCliente, cidade: e.target.value})} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={styles.label}>UF</label>
-                  <input required style={styles.input} type="text" maxLength={2} placeholder="CE" value={formCliente.uf} onChange={e => setFormCliente({...formCliente, uf: e.target.value.toUpperCase()})} />
+                  <label htmlFor="campo-16" style={styles.label}>UF</label>
+                  <input id="campo-16" required style={styles.input} type="text" maxLength={2} placeholder="CE" value={formCliente.uf} onChange={e => setFormCliente({...formCliente, uf: e.target.value.toUpperCase()})} />
                 </div>
               </div>
               <div style={styles.linhaBotoes}>
@@ -1101,9 +1275,10 @@ export default function Dashboard() {
             <h3 style={styles.modalTituloVermelho}>Cadastrar Novo Processo</h3>
             <form onSubmit={handleCadastrarProcesso} style={styles.form}>
               <div>
-                <label style={styles.label}>Cliente</label>
+                <label htmlFor="campo-cliente" style={styles.label}>Cliente</label>
                 {clientes.length > 0 ? (
                   <select
+                    id="campo-cliente"
                     required
                     style={styles.input}
                     value={formProcesso.cliente_id}
@@ -1124,9 +1299,10 @@ export default function Dashboard() {
                 )}
               </div>
               <div>
-                <label style={styles.label}>Número CNJ</label>
+                <label htmlFor="campo-cnj" style={styles.label}>Número CNJ</label>
                 <div style={styles.linhaCnj}>
                   <input
+                    id="campo-cnj"
                     required
                     placeholder="Apenas números ou formatado"
                     style={{ ...styles.input, flex: 1, minWidth: 0 }}
@@ -1149,7 +1325,7 @@ export default function Dashboard() {
                       cursor: somenteDigitos(formProcesso.cnj).length !== 20 || buscandoDatajud ? "not-allowed" : "pointer"
                     }}
                   >
-                    {buscandoDatajud ? "Buscando..." : "🔎 Buscar no DataJud"}
+                    {buscandoDatajud ? "Buscando..." : "Buscar no DataJud"}
                   </button>
                 </div>
 
@@ -1160,16 +1336,16 @@ export default function Dashboard() {
                 {consultaDatajud && renderCaixaDatajud(consultaDatajud)}
               </div>
               <div>
-                <label style={styles.label}>Título do Processo</label>
-                <input required placeholder="Ex: Ação de Cobrança Indevida" style={styles.input} type="text" value={formProcesso.titulo} onChange={e => setFormProcesso({...formProcesso, titulo: e.target.value})} />
+                <label htmlFor="campo-17" style={styles.label}>Título do Processo</label>
+                <input id="campo-17" required placeholder="Ex: Ação de Cobrança Indevida" style={styles.input} type="text" value={formProcesso.titulo} onChange={e => setFormProcesso({...formProcesso, titulo: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>Tribunal</label>
-                <input required placeholder="Ex: TJCE, TRT7, JF" style={styles.input} type="text" value={formProcesso.tribunal} onChange={e => setFormProcesso({...formProcesso, tribunal: e.target.value})} />
+                <label htmlFor="campo-18" style={styles.label}>Tribunal</label>
+                <input id="campo-18" required placeholder="Ex: TJCE, TRT7, JF" style={styles.input} type="text" value={formProcesso.tribunal} onChange={e => setFormProcesso({...formProcesso, tribunal: e.target.value})} />
               </div>
               <div>
-                <label style={styles.label}>Tipo de Processo</label>
-                <select required style={styles.input} value={formProcesso.tipo_processo} onChange={e => setFormProcesso({...formProcesso, tipo_processo: e.target.value})}>
+                <label htmlFor="campo-19" style={styles.label}>Tipo de Processo</label>
+                <select id="campo-19" required style={styles.input} value={formProcesso.tipo_processo} onChange={e => setFormProcesso({...formProcesso, tipo_processo: e.target.value})}>
                   <option value="">Selecione o tipo...</option>
                   <option value="Administrativo">Administrativo</option>
                   <option value="Civil">Civil</option>
@@ -1189,7 +1365,8 @@ export default function Dashboard() {
                   type="submit"
                   style={{
                     ...styles.btnSalvar,
-                    backgroundColor: clientes.length > 0 && consultaDatajud ? "#c0392b" : "#bdc3c7",
+                    backgroundColor: clientes.length > 0 && consultaDatajud ? CORES.marca : CORES.neutro.fundo,
+                    color: clientes.length > 0 && consultaDatajud ? CORES.marcaTexto : CORES.neutro.texto,
                     cursor: clientes.length > 0 && consultaDatajud ? "pointer" : "not-allowed"
                   }}
                   // Só entra processo que o DataJud achou (Spec 001). Mudar o
@@ -1207,492 +1384,800 @@ export default function Dashboard() {
     </div>
   );
 
-  const renderAbaMeusProcessos = () => {
-    if (processoAberto) return renderProcessoCompleto(processoAberto);
+  // Um dado do cartão: rótulo pequeno em cima, valor embaixo
+  const renderDado = (rotulo: string, valor: React.ReactNode, largo = false) => (
+    <div style={largo ? { gridColumn: "1 / -1", minWidth: 0 } : { minWidth: 0 }}>
+      <dt style={styles.dt}>{rotulo}</dt>
+      <dd style={styles.dd}>{valor || "—"}</dd>
+    </div>
+  );
+
+  const renderProcessoCompleto = (processo: any) => {
+    const prazo = prazoAberto(processo);
+    const infoPrazo = analisarPrazo(prazo?.data_vencimento);
+    const corFaixa = processo.status === "Encerrado" ? CORES.neutro : CORES[infoPrazo.tipo];
+    const cliente = processo.cliente;
+    const colunasDados = celular ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))";
 
     return (
-      <div>
-        <div style={styles.cabecalhoAba}>
-          <h3 style={styles.tituloAba}>Meus Processos</h3>
+      <div style={styles.conteudo}>
+        <nav aria-label="Você está em" style={styles.trilha}>
+          <button type="button" onClick={() => setProcessoAberto(null)} style={styles.linkTrilha}>Meus processos</button>
+          <span aria-hidden="true">/</span>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatarCnj(processo.cnj) || "—"}</span>
+        </nav>
+
+        <header style={{ ...styles.topo, display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "16px" }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ ...styles.tituloPagina, fontSize: "36px", lineHeight: 1.1 }}>{processo.titulo}</h1>
+            <div style={styles.cnjGrande}>{[formatarCnj(processo.cnj), processo.tribunal, processo.grau].filter(Boolean).join(" · ")}</div>
+            {processo.status === "Encerrado" && <div style={{ marginTop: "8px" }}>{renderSeloStatus(processo)}</div>}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-start" }}>
+            <button type="button" onClick={() => handleLiberarProcesso(processo.id)} style={styles.btnSecundario}>Liberar para a piscina</button>
+            {processo.cnj && (
+              <button type="button" onClick={() => handleAtualizarDatajud(processo)} disabled={atualizandoDatajud} style={styles.btnAcaoBase}>
+                {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar do DataJud" : "Buscar no DataJud"}
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Prazo em aberto mais próximo e a publicação de onde ele conta */}
+        <div role="status" style={{ ...styles.faixa, backgroundColor: corFaixa.fundo, color: corFaixa.texto, border: `1px solid ${corFaixa.texto}40` }}>
+          {prazo && processo.status !== "Encerrado" ? (
+            <>
+              <strong style={{ fontSize: "18px" }}>Prazo {infoPrazo.texto.toLowerCase()}, {formatarData(prazo.data_vencimento)}</strong>
+              <span>{prazo.interno ? "Prazo inicial antigo (contava do cadastro)" : `Publicação de ${formatarData(prazo.data_publicacao)}`}</span>
+            </>
+          ) : (
+            <strong style={{ fontSize: "18px" }}>
+              {processo.status === "Encerrado" ? `Processo encerrado em ${formatarData(processo.encerrado_em)}` : "Sem prazo em aberto"}
+            </strong>
+          )}
         </div>
-        <div style={styles.cardInfo}>
-          <table style={styles.tabela}>
-            <thead>
-              <tr style={styles.tabelaCabecalho}>
-                <th style={styles.th}>CNJ</th>
-                <th style={styles.th}>Título / Cliente</th>
-                <th style={styles.th}>Tribunal / Tipo</th>
-                <th style={styles.th}>Prazo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {meusProcessos.length > 0 ? meusProcessos.map(processo => {
-                const vencimento = prazoAberto(processo)?.data_vencimento;
-                const infoPrazo = analisarPrazo(vencimento);
-                return (
-                  <tr
-                    key={processo.id}
-                    onClick={() => setProcessoAberto(processo)}
-                    style={{ ...styles.tabelaLinha, cursor: "pointer" }}
-                  >
-                    <td style={{ ...styles.td, fontWeight: "bold" }}>{processo.cnj || "—"}</td>
-                    <td style={styles.td}>
-                      <div>{processo.titulo}</div>
-                      <small style={styles.textoSecundario}>Cliente: {processo.cliente?.nome || "—"}</small>
-                    </td>
-                    <td style={styles.td}>
-                      <div>{processo.tribunal}</div>
-                      <small style={styles.textoSecundario}>{processo.tipo_processo}</small>
-                    </td>
-                    <td style={styles.td}>
-                      {processo.status === "Encerrado" ? renderSeloStatus(processo) : (
-                        <>
-                          <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
-                            {infoPrazo.texto}
-                          </span>
-                          {vencimento && <div><small style={styles.textoSecundario}>{formatarData(vencimento)}</small></div>}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              }) : (
-                <tr><td colSpan={4} style={styles.tdVazio}>Nenhum processo sob sua responsabilidade.</td></tr>
+
+        <div style={{ display: "grid", gridTemplateColumns: largura < 900 ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))", gap: "24px" }}>
+          <section style={styles.cartao} aria-label="Dados do processo">
+            <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Dados do processo</h2></div>
+            <dl style={{ ...styles.dl, gridTemplateColumns: colunasDados }}>
+              {renderDado("Tipo", processo.tipo_processo)}
+              {renderDado("Classe", processo.classe)}
+              {renderDado("Ajuizado em", processo.data_ajuizamento ? formatarDataSimples(processo.data_ajuizamento) : "")}
+              {/* data_cadastro vem em UTC sem fuso; o "Z" evita mostrar o dia seguinte depois das 21h */}
+              {renderDado("Cadastrado em", `${new Date(processo.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por ${processo.criador?.nome}`)}
+              {renderDado("Órgão julgador", processo.orgao_julgador, true)}
+              {renderDado("Assuntos", processo.assuntos?.length > 0 ? processo.assuntos.join(", ") : "", true)}
+            </dl>
+          </section>
+
+          <section style={styles.cartao} aria-label="Cliente">
+            <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Cliente</h2></div>
+            <dl style={{ ...styles.dl, gridTemplateColumns: colunasDados }}>
+              {renderDado("Nome", cliente?.nome, true)}
+              {renderDado("Documento", cliente ? `${cliente.cpf ? "CPF" : "CNPJ"} ${documentoDoCliente(cliente)}` : "")}
+              {renderDado("Telefone", formatarTelefone(cliente?.telefone || ""))}
+              {renderDado("E-mail", cliente?.email, true)}
+              {renderDado("Endereço", enderecoDoCliente(cliente), true)}
+            </dl>
+          </section>
+
+          <section style={styles.cartao} aria-label="Prazos">
+            <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Prazos</h2></div>
+            {renderListaPrazos(processo.prazos)}
+          </section>
+
+          <section style={styles.cartao} aria-label="Peças">
+            <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Peças</h2></div>
+            {renderPecas(processo, true)}
+          </section>
+
+          <section style={{ ...styles.cartao, gridColumn: "1 / -1" }} aria-label="Movimentações do DataJud">
+            <div style={styles.cabCartao}>
+              <h2 style={styles.tituloCartao}>Movimentações</h2>
+              {processo.movimentacoes && (
+                <span style={styles.textoSecundario}>
+                  Fonte: DataJud/CNJ
+                  {processo.datajud_atualizado_em &&
+                    ` · atualizado em ${new Date(processo.datajud_atualizado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
+                </span>
               )}
-            </tbody>
-          </table>
+            </div>
+            {processo.movimentacoes ? (
+              <>
+                {processo.movimentacoes.length > 0 ? (
+                  <ol style={styles.linhaTempo}>
+                    {processo.movimentacoes.map((mov: any, i: number) => (
+                      <li key={i} style={styles.itemTempo}>
+                        <span style={styles.pontoTempo} aria-hidden="true" />
+                        <time style={styles.dataTempo}>{formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}</time>
+                        <div>{mov.nome}</div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div style={styles.textoSecundario}>Nenhuma movimentação registrada.</div>
+                )}
+                <div style={{ ...styles.textoSecundario, marginTop: "6px", fontSize: "13px" }}>
+                  O CNJ recebe os dados dos tribunais com atraso: não use estas movimentações para contar prazo.
+                </div>
+              </>
+            ) : (
+              <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
+            )}
+          </section>
         </div>
       </div>
     );
   };
 
-  const renderProcessoCompleto = (processo: any) => (
-    <div>
-      <button onClick={() => setProcessoAberto(null)} style={styles.btnMiniNeutro}>← Voltar para a lista</button>
+  // Prévia do processo da piscina (abre do Painel e da Piscina)
+  const renderModalPrevia = () => {
+    if (!processoEmPrevia) return null;
+    const processo = processoEmPrevia;
+    const etiquetaEstimativa = etiquetaDaPiscina(processo);
+    const corEstimativa = etiquetaEstimativa.tipo === "vencido" ? CORES.vencido : etiquetaEstimativa.tipo === "neutro" ? CORES.neutro : CORES.urgente;
 
-      <div style={{ ...styles.cabecalhoAba, marginTop: "15px" }}>
-        <div>
-          <h3 style={styles.tituloAba}>{processo.titulo}</h3>
-          <small style={styles.textoSecundario}>CNJ {processo.cnj || "—"}</small>
-        </div>
-        {renderSeloStatus(processo)}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-        <div style={styles.cardInfo}>
-          <h4 style={styles.tituloSecao}>Dados do processo</h4>
-          <div style={styles.gridInfo}>
-            <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{processo.tipo_processo}</span></div>
-            <div><span style={styles.label}>Tribunal:</span><span style={styles.valor}>{processo.tribunal}</span></div>
-            <div><span style={styles.label}>Classe:</span><span style={styles.valor}>{processo.classe || "—"}</span></div>
-            <div><span style={styles.label}>Grau:</span><span style={styles.valor}>{processo.grau || "—"}</span></div>
-            <div><span style={styles.label}>Ajuizado em:</span><span style={styles.valor}>{processo.data_ajuizamento ? formatarDataSimples(processo.data_ajuizamento) : "—"}</span></div>
-            <div><span style={styles.label}>Cadastrado:</span><span style={styles.valor}>
-              {new Date(processo.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por {processo.criador?.nome}
-            </span></div>
-          </div>
-          <div style={{ fontSize: "14px", marginBottom: "6px" }}>
-            <span style={styles.label}>Órgão julgador:</span><span style={styles.valor}>{processo.orgao_julgador || "—"}</span>
-          </div>
-          <div style={{ fontSize: "14px" }}>
-            <span style={styles.label}>Assuntos:</span><span style={styles.valor}>{processo.assuntos?.length > 0 ? processo.assuntos.join(", ") : "—"}</span>
-          </div>
-        </div>
-
-        <div style={styles.cardInfo}>
-          <h4 style={styles.tituloSecao}>Cliente</h4>
-          <div style={styles.gridInfo}>
-            <div><span style={styles.label}>Nome:</span><span style={styles.valor}>{processo.cliente?.nome}</span></div>
-            <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{rotuloTipoPessoa(processo.cliente?.tipo_pessoa)}</span></div>
-            <div><span style={styles.label}>Documento:</span><span style={styles.valor}>{documentoDoCliente(processo.cliente)}</span></div>
-            <div><span style={styles.label}>Telefone:</span><span style={styles.valor}>{formatarTelefone(processo.cliente?.telefone || "")}</span></div>
-          </div>
-          <div style={{ fontSize: "14px", marginBottom: "6px" }}>
-            <span style={styles.label}>E-mail:</span><span style={styles.valor}>{processo.cliente?.email}</span>
-          </div>
-          <div style={{ fontSize: "14px" }}>
-            <span style={styles.label}>Endereço:</span><span style={styles.valor}>{enderecoDoCliente(processo.cliente)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
-        <h4 style={styles.tituloSecao}>Prazos</h4>
-        {renderListaPrazos(processo.prazos)}
-      </div>
-
-      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
-        <h4 style={styles.tituloSecao}>Peças</h4>
-        {renderPecas(processo, true)}
-      </div>
-
-      <div style={{ ...styles.cardInfo, marginTop: "20px", fontSize: "13px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h4 style={styles.tituloSecao}>
-            Histórico de movimentações{processo.movimentacoes ? ` (${processo.movimentacoes.length})` : ""}
-          </h4>
-          {processo.cnj && (
-            <button
-              onClick={() => handleAtualizarDatajud(processo)}
-              disabled={atualizandoDatajud}
-              style={styles.btnMiniNeutro}
-            >
-              {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "🔄 Atualizar dados do DataJud" : "🔎 Buscar no DataJud"}
-            </button>
-          )}
-        </div>
-
-        {processo.movimentacoes ? (
-          <>
-            {processo.movimentacoes.length > 0 ? (
-              <ul style={styles.listaMovimentacoes}>
-                {processo.movimentacoes.map((mov: any, i: number) => (
-                  <li key={i} style={styles.itemMovimentacao}>
-                    <span style={styles.dataMovimentacao}>
-                      {formatarDataSimples(mov.data)}{mov.hora ? ` ${mov.hora}` : ""}
-                    </span>
-                    {mov.nome}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div style={styles.textoSecundario}>Nenhuma movimentação registrada.</div>
-            )}
-            <div style={{ ...styles.notaDatajud, marginTop: "10px", fontSize: "12px" }}>
-              Fonte: DataJud/CNJ
-              {processo.datajud_atualizado_em &&
-                `, atualizado em ${new Date(processo.datajud_atualizado_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`}
-              . O CNJ recebe os dados dos tribunais com atraso: não use estas movimentações para contar prazo.
+    return (
+      <div style={styles.veu}>
+        <section style={styles.modalPrevia} role="dialog" aria-modal="true" aria-labelledby="titulo-previa">
+          <div style={styles.modalCab}>
+            <div style={{ minWidth: 0 }}>
+              <h2 id="titulo-previa" style={styles.tituloModalPrevia}>{processo.titulo}</h2>
+              <div style={styles.cnjGrande}>{formatarCnj(processo.cnj) || "—"} · {processo.tribunal}</div>
             </div>
-          </>
-        ) : (
-          <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
-        )}
-      </div>
-    </div>
-  );
+            <button type="button" onClick={() => setProcessoEmPrevia(null)} aria-label="Fechar" style={styles.btnFechar}>{icone(ICONES.fechar, 18, 2)}</button>
+          </div>
 
-  const renderPainelAdvogado = () => (
-    <div style={{ display: "flex", gap: "20px" }}>
-      <div style={styles.column}>
-        <h3 style={styles.tituloColunaAzul}>📋 Meus Processos Ativos</h3>
-        {meusProcessos.filter(p => p.status !== "Encerrado").length > 0 ? meusProcessos.filter(p => p.status !== "Encerrado").map((processo) => {
-          const dataVencimentoReal = prazoAberto(processo)?.data_vencimento;
-          const infoPrazo = analisarPrazo(dataVencimentoReal);
-          return (
-            <div
-              key={processo.id}
-              onClick={() => abrirPrevia(processo)}
-              title="Ver resumo do processo"
-              style={{ ...styles.processCard, borderLeft: `6px solid ${infoPrazo.cor}`, cursor: "pointer" }}
-            >
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                  <h4 style={{ margin: 0, color: '#1a2a3a', fontSize: '1.1rem' }}>{processo.cnj}</h4>
-                  <span style={{ ...styles.badgePrazo, backgroundColor: infoPrazo.cor + "20", color: infoPrazo.cor === '#95a5a6' ? '#333' : infoPrazo.cor, border: `1px solid ${infoPrazo.cor}` }}>
-                    ⏳ {infoPrazo.texto}
-                  </span>
-                </div>
-                <div style={styles.gridInfo}>
-                  <div><span style={styles.label}>Cliente:</span><span style={styles.valor}>{processo.cliente?.nome || "—"}</span></div>
-                  <div><span style={styles.label}>Tribunal:</span><span style={styles.valor}>{processo.tribunal}</span></div>
-                  <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{processo.tipo_processo}</span></div>
-                  <div><span style={styles.label}>Vencimento:</span><span style={styles.valor}>{dataVencimentoReal ? formatarData(dataVencimentoReal) : "Sem prazo"}</span></div>
-                </div>
-                <span style={styles.badgeAtivo}>{processo.status}</span>
+          <div style={styles.modalCorpo}>
+            <dl style={{ ...styles.dl, gridTemplateColumns: celular ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))" }}>
+              {renderDado("Cliente", processo.cliente?.nome)}
+              {renderDado("Tipo", processo.tipo_processo)}
+              {renderDado("Classe", processo.classe)}
+              {renderDado("Cadastrado em", `${new Date(processo.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por ${processo.criador?.nome}`)}
+            </dl>
+
+            {/* Estimativa só serve na piscina; depois de assumido vale o prazo oficial */}
+            {!processo.responsavel && processo.prazo_estimado && (
+              <div style={{ ...styles.estimativa, backgroundColor: corEstimativa.fundo, color: corEstimativa.texto }}>
+                <strong>{estimativaVencida(processo) ? "Prazo estimado venceu em" : "Prazo estimado:"} {formatarData(processo.prazo_estimado)}</strong>
+                <br />
+                Pela publicação de {formatarData(processo.data_publicacao_datajud)} encontrada no DataJud.
+              </div>
+            )}
+
+            <div>
+              {processo.movimentacoes ? (
+                renderCaixaDatajud({ ...processo, atualizado_em: processo.datajud_atualizado_em })
+              ) : (
+                <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
+              )}
+              {processo.cnj && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleLiberarProcesso(processo.id); }}
+                  onClick={() => handleAtualizarDatajud(processo)}
+                  disabled={atualizandoDatajud}
                   style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
                 >
-                  Liberar para a piscina
+                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar dados do DataJud" : "Buscar no DataJud"}
                 </button>
-            </div>
-          );
-        }) : <p style={{ color: "#666" }}>Nenhum processo sob sua responsabilidade.</p>}
-      </div>
-
-      <div style={styles.column}>
-        <h3 style={styles.tituloColunaVermelha}>⚠️ Piscina (Aguardando Adoção)</h3>
-        {piscinaProcessos.length > 0 ? piscinaProcessos.map((processo) => {
-          // Na piscina só existe a estimativa pela publicação do DataJud (Spec 002)
-          const vencida = estimativaVencida(processo);
-          const antiga = estimativaAntiga(processo);
-          const infoPrazo = analisarPrazo(processo.prazo_estimado);
-          let corBadge = infoPrazo.cor;
-          let textoBadge = processo.prazo_estimado ? infoPrazo.texto : "Sem prazo aberto";
-          if (antiga) {
-            // Mais de 30 dias vencida: cinza, sem alarme
-            corBadge = "#95a5a6";
-            textoBadge = `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao_datajud)})`;
-          } else if (vencida) {
-            // Laranja: venceu, mas há petição depois da publicação (talvez respondida)
-            corBadge = processo.peticao_apos_publicacao ? "#f39c12" : "#c0392b";
-            textoBadge = `Vencido há ${-infoPrazo.dias!} dias (estimado)`;
-          }
-          return (
-            <div key={processo.id} style={{ ...styles.processCardOrphan, borderLeft: `6px solid ${corBadge}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                <h4 style={{ margin: 0 }}>{processo.cnj}</h4>
-                <span style={{ ...styles.badgePrazo, backgroundColor: corBadge + "20", color: corBadge === '#95a5a6' ? '#333' : corBadge, border: `1px solid ${corBadge}` }}>
-                  ⏳ {textoBadge}
-                </span>
-              </div>
-              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Título:</strong> {processo.titulo}</p>
-              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Cliente:</strong> {processo.cliente?.nome || "—"}</p>
-              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Ação:</strong> {processo.tipo_processo}</p>
-              <p style={{ margin: "4px 0", fontSize: "14px" }}><strong>Tribunal:</strong> {processo.tribunal}</p>
-              {processo.classe && (
-                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
-                  {processo.classe}
-                  {processo.data_ajuizamento && ` · ajuizado em ${formatarDataSimples(processo.data_ajuizamento)}`}
-                </p>
-              )}
-              {processo.prazo_estimado && (
-                <p style={{ margin: "4px 0", fontSize: "13px", ...styles.textoSecundario }}>
-                  Publicação de {formatarData(processo.data_publicacao_datajud)}: prazo {vencida ? "venceu" : "vence"} em {formatarData(processo.prazo_estimado)} (estimado)
-                </p>
-              )}
-              {vencida && !antiga && processo.peticao_apos_publicacao && (
-                <p style={{ margin: "4px 0", fontSize: "13px", color: "#b9770e" }}>
-                  Há petição depois da publicação: pode já ter sido respondida.
-                </p>
-              )}
-              <button onClick={() => abrirPrevia(processo)} style={styles.btnAssumir}>Ver detalhes</button>
-            </div>
-          );
-        }) : <p style={{ color: "#666" }}>A piscina está vazia!</p>}
-      </div>
-
-      {/* MODAL: PRÉVIA (PISCINA) OU RESUMO (MEUS PROCESSOS) */}
-      {processoEmPrevia && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3 style={styles.modalTituloAzul}>{processoEmPrevia.titulo}</h3>
-            <p style={{ ...styles.textoSecundario, marginTop: 0 }}>CNJ {processoEmPrevia.cnj || "—"}</p>
-
-            <div style={styles.gridInfo}>
-              <div><span style={styles.label}>Cliente:</span><span style={styles.valor}>{processoEmPrevia.cliente?.nome || "—"}</span></div>
-              <div><span style={styles.label}>Tipo:</span><span style={styles.valor}>{processoEmPrevia.tipo_processo}</span></div>
-              <div><span style={styles.label}>Tribunal:</span><span style={styles.valor}>{processoEmPrevia.tribunal}</span></div>
-              <div><span style={styles.label}>Cadastrado:</span><span style={styles.valor}>
-                {/* data_cadastro vem em UTC sem fuso; o "Z" evita mostrar o dia seguinte depois das 21h */}
-                {new Date(processoEmPrevia.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por {processoEmPrevia.criador?.nome}
-              </span></div>
-            </div>
-
-            {processoEmPrevia.movimentacoes ? (
-              renderCaixaDatajud({ ...processoEmPrevia, atualizado_em: processoEmPrevia.datajud_atualizado_em })
-            ) : (
-              <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
-            )}
-            {processoEmPrevia.cnj && (
-              <button
-                onClick={() => handleAtualizarDatajud(processoEmPrevia)}
-                disabled={atualizandoDatajud}
-                style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
-              >
-                {atualizandoDatajud ? "Consultando..." : processoEmPrevia.movimentacoes ? "🔄 Atualizar dados do DataJud" : "🔎 Buscar no DataJud"}
-              </button>
-            )}
-
-            <div style={styles.subtituloDatajud}>Prazos</div>
-            <div style={{ fontSize: "13px" }}>
-              {renderListaPrazos(processoEmPrevia.prazos)}
-              {/* Estimativa só serve na piscina; depois de assumido vale o prazo oficial */}
-              {!processoEmPrevia.responsavel && processoEmPrevia.prazo_estimado && (
-                <div style={{ marginTop: "6px" }}>
-                  Estimado pela publicação de {formatarData(processoEmPrevia.data_publicacao_datajud)}:{" "}
-                  {estimativaVencida(processoEmPrevia) ? "venceu" : "vence"} em {formatarData(processoEmPrevia.prazo_estimado)}
-                </div>
               )}
             </div>
 
-            <div style={styles.subtituloDatajud}>Peças</div>
-            <div style={{ fontSize: "13px" }}>
-              {renderPecas(processoEmPrevia, false)}
+            <div>
+              <p style={styles.secao}>Prazos</p>
+              {renderListaPrazos(processo.prazos)}
             </div>
 
-            {!processoEmPrevia.responsavel && estimativaAntiga(processoEmPrevia) && (
-              <div style={{ ...styles.textoSecundario, marginTop: "10px" }}>
+            <div>
+              <p style={styles.secao}>Peças</p>
+              {renderPecas(processo, false)}
+            </div>
+
+            {!processo.responsavel && estimativaAntiga(processo) && (
+              <div style={styles.textoSecundario}>
                 A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.
                 Confira no DJEN se existe publicação mais recente.
               </div>
             )}
 
-            {!processoEmPrevia.responsavel && estimativaVencida(processoEmPrevia) && !estimativaAntiga(processoEmPrevia) && (
-              <div style={{ ...styles.avisoInline, marginTop: "10px" }}>
-                {processoEmPrevia.peticao_apos_publicacao
+            {!processo.responsavel && estimativaVencida(processo) && !estimativaAntiga(processo) && (
+              <div style={styles.avisoInline}>
+                {processo.peticao_apos_publicacao
                   ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
                   : "O prazo desta publicação já venceu. Confira no DJEN se houve resposta ou se existe publicação mais recente."}
               </div>
             )}
 
-            {!processoEmPrevia.responsavel && (
-              <div style={{ marginTop: "15px" }}>
-                <label style={styles.label}>Data da publicação no Diário <span style={{ color: "#c0392b" }}>*</span></label>
+            {!processo.responsavel && (
+              <div>
+                <label htmlFor="data-publicacao" style={styles.rotuloCampo}>
+                  Data da publicação no Diário <span style={{ color: CORES.vencido.texto }} aria-hidden="true">*</span>
+                </label>
                 <input
+                  id="data-publicacao"
                   type="date"
                   style={styles.input}
                   value={dataPublicacaoAssumir}
                   onChange={e => setDataPublicacaoAssumir(e.target.value)}
                 />
-                <div style={{ ...styles.notaDatajud, fontSize: "12px", marginTop: "4px" }}>
-                  {processoEmPrevia.data_publicacao_datajud
+                <div style={{ ...styles.textoSecundario, fontSize: "13px", marginTop: "6px" }}>
+                  {processo.data_publicacao_datajud
                     ? "Sugerida pela publicação encontrada no DataJud. Confira no DJEN; se a data certa for outra, troque aqui."
                     : "Informe a data em que a publicação saiu no Diário (confira no DJEN)."}
                 </div>
               </div>
             )}
 
-            {erroPrevia && <div style={{ ...styles.avisoInline, marginTop: "10px" }}>{erroPrevia}</div>}
+            {erroPrevia && <div style={styles.avisoInline}>{erroPrevia}</div>}
+          </div>
 
-            <div style={styles.linhaBotoes}>
-              <button onClick={() => setProcessoEmPrevia(null)} style={styles.btnCancelar}>Fechar</button>
-              {processoEmPrevia.responsavel ? (
-                <button onClick={() => abrirProcessoCompleto(processoEmPrevia)} style={{ ...styles.btnSalvar, backgroundColor: "#1a2a3a" }}>Abrir processo completo</button>
-              ) : (
-                <button onClick={handleAssumirProcesso} style={{ ...styles.btnSalvar, backgroundColor: "#c0392b" }}>Assumir Caso</button>
-              )}
-            </div>
+          <div style={styles.modalPe}>
+            <button type="button" onClick={() => setProcessoEmPrevia(null)} style={styles.btnSecundario}>Fechar</button>
+            {processo.responsavel ? (
+              <button type="button" onClick={() => abrirProcessoCompleto(processo)} style={styles.btnAcaoBase}>Abrir processo completo</button>
+            ) : (
+              <button type="button" onClick={handleAssumirProcesso} style={styles.btnAcaoBase}>Assumir processo</button>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  // Título e subtítulo próprios de cada tela (Spec 007)
+  const renderTopo = (titulo: string, subtitulo: string, acao?: React.ReactNode) => (
+    <header style={styles.topo}>
+      <div>
+        <h1 style={styles.tituloPagina}>{titulo}</h1>
+        <div style={styles.subtituloPagina}>{subtitulo}</div>
+      </div>
+      {acao}
+    </header>
+  );
+
+  // Grade do mês: usada no Painel (cheio = false) e no item Calendário (cheio = true)
+  const renderCalendario = (cheio: boolean) => {
+    const ano = mesCalendario.getFullYear();
+    const mes = mesCalendario.getMonth();
+    const diaDaSemanaDoPrimeiro = mesCalendario.getDay();
+    const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+    const totalCelulas = Math.ceil((diaDaSemanaDoPrimeiro + diasNoMes) / 7) * 7;
+    const hoje = new Date();
+    const nomeMes = MESES[mes].charAt(0).toUpperCase() + MESES[mes].slice(1);
+
+    return (
+      <section style={styles.cartao} aria-label="Calendário de prazos">
+        <div style={{ ...styles.cabCartao, flexWrap: "wrap" }}>
+          <h2 style={styles.tituloCartao}>{nomeMes} de {ano}</h2>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              type="button"
+              onClick={() => { const hoje = new Date(); setMesCalendario(new Date(hoje.getFullYear(), hoje.getMonth(), 1)); }}
+              style={{ ...styles.btnSeta, width: "auto", padding: "0 14px", fontSize: "15px", fontWeight: 600 }}
+            >
+              Hoje
+            </button>
+            <button type="button" onClick={() => mudarMes(-1)} aria-label="Mês anterior" style={styles.btnSeta}>{icone(ICONES.anterior, 16, 2)}</button>
+            <button type="button" onClick={() => mudarMes(1)} aria-label="Próximo mês" style={styles.btnSeta}>{icone(ICONES.proximo, 16, 2)}</button>
           </div>
         </div>
-      )}
+
+        <div style={{ overflowX: "auto" }}>
+          {/* No celular a grade cabe na largura: colunas sem mínimo e uma letra por dia */}
+          <div style={celular ? { ...styles.gradeMes, gridTemplateColumns: "repeat(7, minmax(0, 1fr))", minWidth: 0 } : styles.gradeMes}>
+            {DIAS_DA_SEMANA.map((dia, i) => (
+              <div key={i} style={celular ? { ...styles.diaSemana, padding: "6px 0", textAlign: "center", letterSpacing: 0 } : styles.diaSemana}>
+                {celular ? dia.charAt(0) : dia}
+              </div>
+            ))}
+            {Array.from({ length: totalCelulas }, (_, i) => {
+              // new Date aceita dia fora do mês: os dias de fora vêm dos meses vizinhos
+              const data = new Date(ano, mes, i - diaDaSemanaDoPrimeiro + 1);
+              const dentro = data.getMonth() === mes;
+              const ehHoje = data.toDateString() === hoje.toDateString();
+              const fimDeSemana = i % 7 === 0 || i % 7 === 6;
+              const prazosDoDia = dentro
+                ? prazosAbertos.filter(p => parseDataLocal(p.data_vencimento).getTime() === data.getTime())
+                : [];
+              return (
+                <div key={i} style={{ ...styles.diaCalendario, minHeight: celular ? "52px" : cheio ? "120px" : "96px", padding: celular ? "4px" : "8px", backgroundColor: fimDeSemana ? "#FAF8F3" : CORES.papel }}>
+                  <span style={ehHoje ? styles.numeroHoje : { ...styles.numeroDia, color: dentro ? CORES.suave : "#B3AB9C" }}>
+                    {data.getDate()}
+                  </span>
+                  {celular ? (
+                    // No celular cada prazo é só um pontinho com a cor da situação; o texto fica no title/aria-label
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px" }}>
+                      {prazosDoDia.map(prazo => (
+                        <span
+                          key={prazo.id}
+                          role="img"
+                          aria-label={`${prazo.processo.titulo} · ${analisarPrazo(prazo.data_vencimento).texto}`}
+                          title={`${prazo.processo.titulo} · ${formatarCnj(prazo.processo.cnj)}`}
+                          style={{ ...styles.bola, width: "8px", height: "8px", borderRadius: "50%", backgroundColor: CORES[analisarPrazo(prazo.data_vencimento).tipo].bola }}
+                        />
+                      ))}
+                    </div>
+                  ) : prazosDoDia.map(prazo => (
+                    <span
+                      key={prazo.id}
+                      title={`${prazo.processo.titulo} · ${formatarCnj(prazo.processo.cnj)}`}
+                      style={{ ...styles.chip, backgroundColor: CORES[analisarPrazo(prazo.data_vencimento).tipo].fundo, color: CORES[analisarPrazo(prazo.data_vencimento).tipo].texto }}
+                    >
+                      {prazo.processo.titulo}
+                    </span>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={styles.legenda}>
+          <span style={styles.itemLegenda}><i style={{ ...styles.bola, backgroundColor: CORES.vencido.bola }} />Vencido</span>
+          <span style={styles.itemLegenda}><i style={{ ...styles.bola, backgroundColor: CORES.urgente.bola }} />Vence em até 3 dias</span>
+          <span style={styles.itemLegenda}><i style={{ ...styles.bola, backgroundColor: CORES.emdia.bola }} />Em dia</span>
+        </div>
+      </section>
+    );
+  };
+
+  // Item da piscina: usado no Painel e na tela Piscina
+  const renderItemPiscina = (processo: any, indice = 1) => {
+    const etiqueta = etiquetaDaPiscina(processo);
+    return (
+      <div key={processo.id} style={{ ...styles.itemPiscina, ...(indice === 0 && styles.primeiraLinha) }}>
+        <strong>{processo.titulo}</strong>
+        <span style={styles.cnj}>{formatarCnj(processo.cnj)} · {processo.tribunal}</span>
+        <span style={estiloEtiqueta(etiqueta.tipo)}>{etiqueta.texto}</span>
+        <button type="button" onClick={() => abrirPrevia(processo)} style={styles.linkAcao}>Ver prévia e assumir</button>
+      </div>
+    );
+  };
+
+  const renderPainelAdvogado = () => {
+    const vencidos = prazosAbertos.filter(p => analisarPrazo(p.data_vencimento).tipo === "vencido").length;
+    const urgentes = prazosAbertos.filter(p => analisarPrazo(p.data_vencimento).tipo === "urgente").length;
+    const prazosDoMes = prazosAbertos.filter(p => {
+      const data = parseDataLocal(p.data_vencimento);
+      return data.getFullYear() === mesCalendario.getFullYear() && data.getMonth() === mesCalendario.getMonth();
+    }).length;
+    const proximos = prazosAbertos.slice(0, 4);
+    const nomeMes = MESES[mesCalendario.getMonth()];
+
+    // Data de hoje por extenso, com a primeira letra maiúscula
+    const dataExtenso = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+    const resumo = [
+      { numero: vencidos, rotulo: vencidos === 1 ? "Prazo vencido" : "Prazos vencidos", cor: CORES.vencido.texto },
+      { numero: urgentes, rotulo: urgentes === 1 ? "Vence em até 3 dias" : "Vencem em até 3 dias", cor: CORES.urgente.texto },
+      { numero: prazosDoMes, rotulo: `${prazosDoMes === 1 ? "Prazo" : "Prazos"} em ${nomeMes}`, cor: CORES.marca },
+      { numero: piscinaProcessos.length, rotulo: piscinaProcessos.length === 1 ? "Processo na piscina" : "Processos na piscina", cor: CORES.marca },
+    ];
+
+    return (
+      <div style={styles.conteudo}>
+        {renderTopo("Painel", dataExtenso.charAt(0).toUpperCase() + dataExtenso.slice(1))}
+
+        <section style={{ ...styles.resumo, gridTemplateColumns: celular ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))" }} aria-label="Resumo dos prazos">
+          {resumo.map(item => (
+            <div key={item.rotulo} style={styles.tile}>
+              <span style={{ ...styles.tileNumero, color: item.cor }}>{item.numero}</span>
+              <span style={styles.tileRotulo}>{item.rotulo}</span>
+            </div>
+          ))}
+        </section>
+
+        <div style={styles.gradePainel}>
+          <div style={{ flex: "2 1 620px", minWidth: 0 }}>{renderCalendario(false)}</div>
+
+          <div style={styles.ladoPainel}>
+            <section style={styles.cartao} aria-label="Próximos prazos">
+              <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Próximos prazos</h2></div>
+              {proximos.length > 0 ? (
+                <ul style={styles.listaSemMarcador}>
+                  {proximos.map((prazo, i) => {
+                    const data = parseDataLocal(prazo.data_vencimento);
+                    const situacao = analisarPrazo(prazo.data_vencimento);
+                    return (
+                      <li key={prazo.id} style={{ ...styles.itemProximo, borderTop: i === 0 ? "none" : `1px solid ${CORES.linha}`, paddingTop: i === 0 ? 0 : "14px" }}>
+                        <div style={styles.quando}>
+                          <b style={styles.quandoDia}>{data.getDate()}</b>
+                          <small style={styles.quandoMes}>{MESES[data.getMonth()].slice(0, 3)}</small>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <strong>{prazo.processo.titulo}</strong>
+                          <div style={styles.cnj}>{formatarCnj(prazo.processo.cnj)} · {prazo.processo.tribunal}</div>
+                          <span style={{ ...estiloEtiqueta(situacao.tipo), marginTop: "4px" }}>{situacao.texto}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div style={styles.textoSecundario}>Nenhum prazo em aberto.</div>
+              )}
+            </section>
+
+            <section style={styles.cartao} aria-label="Piscina">
+              <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Na piscina</h2></div>
+              {piscinaProcessos.length > 0 ? (
+                <>
+                  {piscinaProcessos.slice(0, 3).map(renderItemPiscina)}
+                  {piscinaProcessos.length > 3 && (
+                    <button type="button" onClick={() => irPara("piscina")} style={{ ...styles.linkAcao, marginTop: "8px" }}>
+                      Ver todos ({piscinaProcessos.length})
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div style={styles.textoSecundario}>A piscina está vazia.</div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAbaCalendario = () => (
+    <div style={styles.conteudo}>
+      {renderTopo("Calendário", "Prazos em aberto dos seus processos")}
+      {renderCalendario(true)}
     </div>
   );
 
-  return (
-    <div style={styles.container}>
-      {/* MENU LATERAL */}
-      <aside style={styles.sidebar}>
-        <div style={{ flex: 1 }}>
-          <div style={{ textAlign: "center", marginBottom: "20px" }}>
-            <img src="/logo.jpg" alt="Logo" style={styles.logo} />
-            <h2 style={{ color: "#D4AF37", marginTop: "10px" }}>Argus Legis</h2>
+  const renderAbaPiscina = () => (
+    <div style={styles.conteudo}>
+      {renderTopo("Piscina", `${piscinaProcessos.length} ${piscinaProcessos.length === 1 ? "processo aguardando" : "processos aguardando"} um responsável`)}
+      <section style={styles.cartao} aria-label="Processos na piscina">
+        {piscinaProcessos.length > 0
+          ? piscinaProcessos.map(renderItemPiscina)
+          : <div style={styles.textoSecundario}>A piscina está vazia.</div>}
+      </section>
+    </div>
+  );
+
+  const renderAbaMeusProcessos = () => {
+    if (processoAberto) return renderProcessoCompleto(processoAberto);
+
+    // Busca por CNJ (com ou sem pontos), título ou nome do cliente
+    const termo = semAcento(busca);
+    const filtrados = meusProcessos.filter(p =>
+      semAcento(`${p.cnj} ${formatarCnj(p.cnj)} ${p.titulo} ${p.cliente?.nome ?? ""}`).includes(termo)
+    );
+    // Por vencimento: vencido primeiro, depois o mais próximo, sem prazo no fim.
+    // Mais recentes: cadastro mais novo primeiro
+    const ordenados = [...filtrados].sort((a, b) => {
+      if (ordem === "recentes") return String(b.data_cadastro).localeCompare(String(a.data_cadastro));
+      const prazoA = prazoAberto(a)?.data_vencimento ?? "9999-12-31";
+      const prazoB = prazoAberto(b)?.data_vencimento ?? "9999-12-31";
+      return prazoA.localeCompare(prazoB);
+    });
+
+    return (
+      <div style={styles.conteudo}>
+        {renderTopo("Meus processos", `${meusProcessos.length} ${meusProcessos.length === 1 ? "processo sob" : "processos sob"} sua responsabilidade`)}
+
+        <div style={styles.filtros}>
+          <label style={styles.busca}>
+            {icone(ICONES.busca, 16, 2)}
+            <input
+              type="search"
+              placeholder="Buscar por CNJ, título ou cliente"
+              aria-label="Buscar processo"
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              style={styles.campoBusca}
+            />
+          </label>
+          <div style={styles.abasOrdem} role="group" aria-label="Ordenar">
+            <button type="button" aria-pressed={ordem === "vencimento"} onClick={() => setOrdem("vencimento")} style={ordem === "vencimento" ? styles.abaOrdemAtiva : styles.abaOrdem}>
+              Por vencimento
+            </button>
+            <button type="button" aria-pressed={ordem === "recentes"} onClick={() => setOrdem("recentes")} style={ordem === "recentes" ? styles.abaOrdemAtiva : styles.abaOrdem}>
+              Mais recentes
+            </button>
           </div>
-          <ul style={{ listStyle: "none", padding: 0, lineHeight: "3em" }}>
-            {user?.perfil === "ADMIN" ? (
-              <>
-                <li onClick={() => setAbaAdmin("cadastro")} style={abaAdmin === "cadastro" ? styles.menuItemAtivo : styles.menuItemInativo}>
-                  📝 Equipe
-                </li>
-                <li onClick={() => setAbaAdmin("clientes")} style={abaAdmin === "clientes" ? styles.menuItemAtivo : styles.menuItemInativo}>
-                  👤 Clientes
-                </li>
-                <li onClick={() => setAbaAdmin("processos")} style={abaAdmin === "processos" ? styles.menuItemAtivo : styles.menuItemInativo}>
-                  📂 Processos
-                </li>
-              </>
-            ) : (
-              <>
-                <li onClick={() => setAbaAdvogado("painel")} style={abaAdvogado === "painel" ? styles.menuItemAtivo : styles.menuItemInativo}>
-                  📋 Painel
-                </li>
-                <li
-                  onClick={() => { setAbaAdvogado("processos"); setProcessoAberto(null); }}
-                  style={abaAdvogado === "processos" ? styles.menuItemAtivo : styles.menuItemInativo}
-                >
-                  📂 Meus Processos
-                </li>
-              </>
-            )}
-          </ul>
         </div>
-        <button onClick={logout} style={styles.logoutButton}>🚪 Sair do Sistema</button>
-      </aside>
+
+        <section style={styles.cartaoTabela} aria-label="Lista de processos">
+          <table style={styles.tabela}>
+            <thead>
+              <tr style={styles.tabelaCabecalho}>
+                <th style={styles.th}>Processo</th>
+                <th style={styles.th}>Cliente</th>
+                <th style={styles.th}>Tribunal</th>
+                <th style={styles.th}>Prazo</th>
+                <th style={styles.th}><span style={styles.soParaLeitor}>Ação</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordenados.length > 0 ? ordenados.map(processo => {
+                const vencimento = prazoAberto(processo)?.data_vencimento;
+                const infoPrazo = analisarPrazo(vencimento);
+                return (
+                  <tr key={processo.id} style={styles.tabelaLinha}>
+                    <td style={styles.td}>
+                      <button type="button" onClick={() => setProcessoAberto(processo)} style={styles.linkCnj}>{formatarCnj(processo.cnj) || "—"}</button>
+                      <span style={styles.segundaLinha}>{processo.titulo}</span>
+                    </td>
+                    <td style={styles.td}>
+                      {processo.cliente?.nome || "—"}
+                      <span style={styles.segundaLinha}>{rotuloTipoPessoa(processo.cliente?.tipo_pessoa)}</span>
+                    </td>
+                    <td style={styles.td}>
+                      {processo.tribunal}
+                      <span style={styles.segundaLinha}>{processo.tipo_processo}</span>
+                    </td>
+                    <td style={styles.td}>
+                      {processo.status === "Encerrado" ? (
+                        <span style={estiloEtiqueta("neutro")}>Encerrado em {formatarData(processo.encerrado_em)}</span>
+                      ) : (
+                        <span style={estiloEtiqueta(infoPrazo.tipo)}>
+                          {infoPrazo.texto}{vencimento ? ` · ${formatarData(vencimento).slice(0, 5)}` : ""}
+                        </span>
+                      )}
+                    </td>
+                    <td style={styles.tdAcoes}>
+                      <button type="button" onClick={() => setProcessoAberto(processo)} style={styles.linkAcao}>Abrir</button>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={5} style={styles.tdVazio}>
+                    {meusProcessos.length > 0 ? "Nenhum processo encontrado para esta busca." : "Nenhum processo sob sua responsabilidade."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </section>
+      </div>
+    );
+  };
+
+  // Itens do menu lateral, conforme o perfil (Spec 007)
+  const itensMenu = user?.perfil === "ADMIN"
+    ? [
+        { chave: "cadastro", rotulo: "Equipe", icone: ICONES.equipe, ativo: abaAdmin === "cadastro", ir: () => setAbaAdmin("cadastro") },
+        { chave: "clientes", rotulo: "Clientes", icone: ICONES.clientes, ativo: abaAdmin === "clientes", ir: () => setAbaAdmin("clientes") },
+        { chave: "processos", rotulo: "Processos", icone: ICONES.pasta, ativo: abaAdmin === "processos", ir: () => setAbaAdmin("processos") },
+      ]
+    : [
+        { chave: "painel", rotulo: "Painel", icone: ICONES.painel, ativo: abaAdvogado === "painel", ir: () => irPara("painel") },
+        { chave: "calendario", rotulo: "Calendário", icone: ICONES.calendario, ativo: abaAdvogado === "calendario", ir: () => irPara("calendario") },
+        { chave: "processos", rotulo: "Meus processos", icone: ICONES.pasta, ativo: abaAdvogado === "processos", ir: () => irPara("processos") },
+        { chave: "piscina", rotulo: "Piscina", icone: ICONES.piscina, ativo: abaAdvogado === "piscina", ir: () => irPara("piscina") },
+      ];
+
+  return (
+    <div style={{ ...styles.container, height: celular ? "auto" : "100vh", flexDirection: celular ? "column" : "row" }}>
+      {/* MENU LATERAL (no celular fica em cima) */}
+      {/* No celular vira uma faixa só (marca, itens e Sair em linha), rolando de lado se precisar */}
+      <nav aria-label="Menu principal" style={celular ? styles.faixaMenu : { ...styles.sidebar, width: "260px", padding: "32px 20px", gap: "28px" }}>
+        {/* No celular: em cima a marca e o Sair; embaixo os itens, quebrando linha se não couberem */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+          <div style={styles.marca}>
+            <div style={styles.selo} aria-hidden="true">A</div>
+            <div style={{ ...styles.nomeMarca, fontSize: celular ? "20px" : "24px" }}>Argus Legis</div>
+          </div>
+          {celular && <button type="button" onClick={logout} style={{ ...styles.logoutButton, marginTop: 0 }}>Sair</button>}
+        </div>
+
+        <ul style={{ ...styles.listaMenu, flexDirection: celular ? "row" : "column", flexWrap: "wrap" }}>
+          {itensMenu.map(item => (
+            <li key={item.chave}>
+              <button
+                type="button"
+                // Trocar de aba apaga o aviso da tela anterior (ex.: "Cliente removido.")
+                onClick={() => { setAviso(null); item.ir(); }}
+                aria-current={item.ativo ? "page" : undefined}
+                style={{ ...(item.ativo ? styles.menuItemAtivo : styles.menuItemInativo), whiteSpace: "nowrap", padding: celular ? "8px 10px" : "11px 12px" }}
+              >
+                {icone(item.icone)}
+                {item.rotulo}
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {!celular && (
+          <div style={{ ...styles.usuario, marginTop: "auto" }}>
+            <strong>{user?.nome || user?.email || "Usuário"}</strong>
+            <small style={{ color: CORES.marcaSuave }}>
+              {user?.perfil === "ADMIN" ? "Administrador" : "Advogado"}{user?.oab ? ` · OAB ${user.oab}` : ""}
+            </small>
+            <button type="button" onClick={logout} style={styles.logoutButton}>Sair</button>
+          </div>
+        )}
+      </nav>
 
       {/* CONTEÚDO PRINCIPAL */}
-      <main style={styles.main}>
-        <header style={styles.header}>
-          <h3 style={{ margin: 0 }}>Painel Operacional — Gerenciamento</h3>
-        </header>
-
-        <section style={{ padding: "30px" }}>
-          <div style={styles.cardInfoTop}>
-            <h2 style={{ marginTop: 0 }}>Bem-vindo, {user?.nome || user?.email || "Usuário"}!</h2>
-            <p style={{ color: "#666", marginBottom: 0 }}>
-              Perfil ativo: <strong>{user?.perfil || "Desconhecido"}</strong>
-            </p>
+      <main style={{ ...styles.main, padding: celular ? "24px 16px" : "36px 40px 48px" }}>
+        {aviso && (
+          <div style={aviso.tipo === "sucesso" ? styles.avisoSucesso : styles.avisoErro}>
+            <span>{aviso.texto}</span>
+            <button type="button" onClick={() => setAviso(null)} aria-label="Fechar aviso" style={styles.btnFecharAviso}>{icone(ICONES.fechar, 14, 2)}</button>
           </div>
+        )}
 
-          {aviso && (
-            <div style={aviso.tipo === "sucesso" ? styles.avisoSucesso : styles.avisoErro}>
-              <span>{aviso.texto}</span>
-              <button onClick={() => setAviso(null)} style={styles.btnFecharAviso}>✕</button>
-            </div>
-          )}
+        {erro && <p style={{ color: CORES.vencido.texto, fontWeight: 600 }}>{erro}</p>}
 
-          {erro && <p style={{ color: "red", fontWeight: "bold" }}>{erro}</p>}
+        {carregando ? (
+          <p>Carregando painel...</p>
+        ) : (
+          user?.perfil === "ADMIN" ? renderPainelAdmin()
+            : abaAdvogado === "processos" ? renderAbaMeusProcessos()
+            : abaAdvogado === "calendario" ? renderAbaCalendario()
+            : abaAdvogado === "piscina" ? renderAbaPiscina()
+            : renderPainelAdvogado()
+        )}
 
-          {carregando ? (
-            <p>Carregando painel...</p>
-          ) : (
-            user?.perfil === "ADMIN" ? renderPainelAdmin()
-              : abaAdvogado === "processos" ? renderAbaMeusProcessos()
-              : renderPainelAdvogado()
-          )}
-        </section>
+        {/* A prévia abre do Painel e da Piscina */}
+        {user?.perfil !== "ADMIN" && renderModalPrevia()}
       </main>
     </div>
   );
 }
 
 // --- CONFIGURAÇÃO DE ESTILOS ---
+const menuItemBase = {
+  display: "flex", alignItems: "center", gap: "12px", width: "100%", boxSizing: "border-box" as const,
+  padding: "11px 12px", border: "none", borderRadius: "6px", backgroundColor: "transparent", cursor: "pointer",
+  minHeight: "44px", fontSize: "15px", fontWeight: 500 as const, textAlign: "left" as const, color: CORES.marcaSuave,
+};
+
+const modalTitulo = { marginTop: 0, paddingBottom: "10px", borderBottom: `1px solid ${CORES.linha}`, fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "28px", color: CORES.marca };
+
 const styles = {
-  container: { display: "flex", height: "100vh", width: "100vw", margin: 0, fontFamily: "sans-serif" },
-  sidebar: { width: "250px", backgroundColor: "#1a2a3a", color: "white", padding: "20px", display: "flex", flexDirection: "column" as const, boxSizing: "border-box" as const },
-  logo: { width: "100px", borderRadius: "8px", objectFit: "cover" as const },
-  menuItemAtivo: { cursor: "pointer", borderBottom: "2px solid #D4AF37", paddingBottom: "5px", color: "#D4AF37", fontWeight: "bold" as const, marginBottom: "10px" },
-  menuItemInativo: { cursor: "pointer", color: "#a0aab5", paddingBottom: "5px", marginBottom: "10px", transition: "0.2s" },
-  logoutButton: { backgroundColor: "#c0392b", color: "white", border: "none", padding: "12px", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" },
-  main: { flex: 1, backgroundColor: "#f5f5f5", overflowY: "auto" as const },
-  header: { padding: "15px 30px", backgroundColor: "white", boxShadow: "0 2px 5px rgba(0,0,0,0.1)" },
-  cardInfoTop: { backgroundColor: "white", padding: "20px", borderRadius: "8px", border: "1px solid #ddd", marginBottom: "20px" },
-  cardInfo: { backgroundColor: "white", padding: "20px", borderRadius: "8px", border: "1px solid #ddd" },
-  column: { flex: 1, backgroundColor: "white", padding: "20px", borderRadius: "8px", border: "1px solid #ddd", minHeight: "400px" },
-  tituloColunaAzul: { color: "#1a2a3a", borderBottom: "2px solid #D4AF37", paddingBottom: "10px", marginTop: 0 },
-  tituloSecao: { color: "#1a2a3a", borderBottom: "2px solid #D4AF37", paddingBottom: "8px", marginTop: 0, fontSize: "16px" },
-  tituloColunaVermelha:{ color: "#c0392b", borderBottom: "2px solid #c0392b", paddingBottom: "10px", marginTop: 0 },
-  processCard: { borderTop: "1px solid #eee", borderRight: "1px solid #eee", borderBottom: "1px solid #eee", padding: "15px", borderRadius: "8px", marginBottom: "15px", backgroundColor: "#fff", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" },
-  processCardOrphan: { border: "1px solid #ffdce0", padding: "15px", borderRadius: "8px", marginBottom: "15px", backgroundColor: "#fff5f5", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" },
-  badgePrazo: { fontSize: "12px", padding: "4px 8px", borderRadius: "12px", fontWeight: "bold" as const, whiteSpace: "nowrap" as const },
+  // Estrutura: menu lateral escuro + conteúdo
+  container: { display: "flex", width: "100%", margin: 0, backgroundColor: CORES.fundo },
+  sidebar: { flexShrink: 0, backgroundColor: CORES.marca, color: CORES.marcaTexto, display: "flex", flexDirection: "column" as const, boxSizing: "border-box" as const, overflowY: "auto" as const },
+  marca: { display: "flex", alignItems: "center", gap: "12px" },
+  faixaMenu: { display: "flex", flexDirection: "column" as const, gap: "8px", padding: "10px 12px", backgroundColor: CORES.marca, color: CORES.marcaTexto },
+  selo: { width: "40px", height: "40px", border: `1.5px solid ${CORES.detalhe}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "22px", fontWeight: 700, color: CORES.detalhe },
+  nomeMarca: { fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "24px", fontWeight: 600, letterSpacing: "0.04em" },
+  listaMenu: { display: "flex", gap: "4px", margin: 0, padding: 0, listStyle: "none" },
+  menuItemAtivo: { ...menuItemBase, color: CORES.marcaTexto, backgroundColor: "rgba(255,255,255,0.08)", boxShadow: `inset 3px 0 0 ${CORES.detalhe}` },
+  menuItemInativo: menuItemBase,
+  usuario: { display: "flex", flexDirection: "column" as const, gap: "2px", borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: "18px" },
+  logoutButton: { marginTop: "10px", minHeight: "44px", padding: "9px 12px", backgroundColor: "transparent", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "6px", color: CORES.marcaSuave, cursor: "pointer", fontSize: "15px", textAlign: "left" as const },
+  main: { flex: 1, minWidth: 0, boxSizing: "border-box" as const, overflowY: "auto" as const, backgroundColor: CORES.fundo, color: CORES.tinta },
+
+  // Cabeçalho de cada tela
+  conteudo: { display: "flex", flexDirection: "column" as const, gap: "28px" },
+  topo: { display: "flex", flexWrap: "wrap" as const, alignItems: "flex-end", justifyContent: "space-between", gap: "16px", borderBottom: `1px solid ${CORES.linha}`, paddingBottom: "20px" },
+  tituloPagina: { margin: 0, fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "40px", fontWeight: 600, letterSpacing: "0.01em", color: CORES.marca },
+  subtituloPagina: { marginTop: "2px", color: CORES.suave },
+
+  // Painel: resumo, calendário e cartões laterais
+  resumo: { display: "grid", gap: "16px" },
+  tile: { display: "flex", flexDirection: "column" as const, gap: "4px", padding: "18px 20px", backgroundColor: CORES.papel, border: `1px solid ${CORES.linha}`, borderRadius: "8px" },
+  tileNumero: { fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "38px", fontWeight: 600, lineHeight: 1 },
+  tileRotulo: { color: CORES.suave, fontSize: "14px" },
+  gradePainel: { display: "flex", flexWrap: "wrap" as const, gap: "24px", alignItems: "flex-start" },
+  ladoPainel: { flex: "1 1 300px", minWidth: 0, display: "flex", flexDirection: "column" as const, gap: "24px" },
+  cartao: { padding: "22px 24px", backgroundColor: CORES.papel, border: `1px solid ${CORES.linha}`, borderRadius: "8px", boxSizing: "border-box" as const },
+  cartaoTabela: { backgroundColor: CORES.papel, border: `1px solid ${CORES.linha}`, borderRadius: "8px", overflowX: "auto" as const },
+  cabCartao: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "16px" },
+  tituloCartao: { margin: 0, fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "26px", fontWeight: 600, color: CORES.marca },
+  btnSeta: { width: "44px", height: "44px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: CORES.papel, border: `1px solid ${CORES.linha}`, borderRadius: "6px", color: CORES.tinta, cursor: "pointer" },
+
+  // Calendário
+  gradeMes: { display: "grid", gridTemplateColumns: "repeat(7, minmax(84px, 1fr))", minWidth: "600px", borderTop: `1px solid ${CORES.linha}`, borderLeft: `1px solid ${CORES.linha}` },
+  diaSemana: { padding: "8px 10px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.suave, backgroundColor: CORES.fundo, borderRight: `1px solid ${CORES.linha}`, borderBottom: `1px solid ${CORES.linha}` },
+  diaCalendario: { display: "flex", flexDirection: "column" as const, gap: "4px", padding: "8px", minWidth: 0, boxSizing: "border-box" as const, borderRight: `1px solid ${CORES.linha}`, borderBottom: `1px solid ${CORES.linha}` },
+  numeroDia: { fontSize: "13px", fontWeight: 600 },
+  numeroHoje: { alignSelf: "flex-start", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: CORES.marca, color: CORES.marcaTexto, fontSize: "13px", fontWeight: 600 },
+  chip: { display: "block", padding: "3px 6px", borderRadius: "4px", fontSize: "12px", lineHeight: 1.3, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" },
+  legenda: { display: "flex", flexWrap: "wrap" as const, gap: "16px", marginTop: "14px", fontSize: "13px", color: CORES.suave },
+  itemLegenda: { display: "inline-flex", alignItems: "center", gap: "6px" },
+  bola: { display: "inline-block", width: "10px", height: "10px", borderRadius: "2px" },
+
+  // Próximos prazos e piscina
+  listaSemMarcador: { display: "flex", flexDirection: "column" as const, margin: 0, padding: 0, listStyle: "none" },
+  itemProximo: { display: "flex", gap: "14px", padding: "14px 0" },
+  quando: { flex: "none", width: "52px", padding: "6px 0", textAlign: "center" as const, backgroundColor: CORES.fundo, border: `1px solid ${CORES.linha}`, borderRadius: "6px" },
+  quandoDia: { display: "block", fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "24px", lineHeight: 1, color: CORES.marca },
+  quandoMes: { fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.detalheTexto },
+  cnj: { fontSize: "13px", color: CORES.suave, fontVariantNumeric: "tabular-nums" as const },
+  etiqueta: { display: "inline-block", alignSelf: "flex-start", padding: "3px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600 },
+  itemPiscina: { display: "flex", flexDirection: "column" as const, gap: "6px", padding: "14px 0", borderTop: `1px solid ${CORES.linha}` },
+  linkAcao: { alignSelf: "flex-start", display: "inline-flex", alignItems: "center", minHeight: "44px", padding: "0 2px", backgroundColor: "transparent", border: "none", borderBottom: `1px solid ${CORES.detalhe}`, color: CORES.marca, cursor: "pointer", fontSize: "15px", fontWeight: 600 },
+
+  // Meus processos: busca, ordenação e tabela
+  filtros: { display: "flex", flexWrap: "wrap" as const, gap: "12px", alignItems: "center" },
+  busca: { flex: "1 1 280px", display: "flex", alignItems: "center", gap: "8px", minHeight: "44px", padding: "0 12px", boxSizing: "border-box" as const, backgroundColor: CORES.papel, border: "1px solid #C9C1B2", borderRadius: "6px", color: CORES.suave },
+  campoBusca: { flex: 1, minWidth: 0, border: "none", backgroundColor: "transparent", fontSize: "15px", color: CORES.tinta },
+  abasOrdem: { display: "flex", gap: "4px", padding: "2px", backgroundColor: CORES.papel, border: `1px solid ${CORES.linha}`, borderRadius: "6px" },
+  abaOrdem: { minHeight: "44px", padding: "8px 14px", backgroundColor: "transparent", border: "none", borderRadius: "4px", color: CORES.suave, cursor: "pointer", fontSize: "15px" },
+  abaOrdemAtiva: { minHeight: "44px", padding: "8px 14px", backgroundColor: CORES.marca, border: "none", borderRadius: "4px", color: CORES.marcaTexto, cursor: "pointer", fontSize: "15px" },
+  linkCnj: { padding: 0, backgroundColor: "transparent", border: "none", color: CORES.marca, cursor: "pointer", fontSize: "15px", fontWeight: 600, textAlign: "left" as const, fontVariantNumeric: "tabular-nums" as const },
+  segundaLinha: { display: "block", marginTop: "2px", color: CORES.suave, fontSize: "14px" },
+  soParaLeitor: { position: "absolute" as const, left: "-9999px" },
+
+  // Tabelas do ADMIN
+  pessoa: { display: "flex", alignItems: "center", gap: "12px" },
+  inicial: { width: "36px", height: "36px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: CORES.emdia.fundo, color: CORES.marca, fontWeight: 600 },
+  cnjTabela: { fontWeight: 600, color: CORES.marca, fontVariantNumeric: "tabular-nums" as const },
+
+  // Listas em linhas (prazos, peças) e dados em colunas (processo completo, prévia)
+  listaLinhas: { margin: 0, padding: 0, listStyle: "none" },
+  itemLinha: { display: "flex", flexWrap: "wrap" as const, justifyContent: "space-between", gap: "8px 16px", padding: "14px 0", borderTop: `1px solid ${CORES.linha}` },
+  primeiraLinha: { borderTop: "none", paddingTop: 0 },
+  dl: { display: "grid", gap: "16px 24px", margin: 0 },
+  dt: { fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.suave },
+  dd: { margin: "3px 0 0", overflowWrap: "anywhere" as const },
+  envio: { display: "flex", flexWrap: "wrap" as const, gap: "10px", alignItems: "center", marginTop: "16px", paddingTop: "16px", borderTop: `1px dashed ${CORES.linha}` },
+  btnSecundario: { minHeight: "44px", padding: "10px 18px", backgroundColor: CORES.papel, color: CORES.tinta, border: "1px solid #C9C1B2", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "15px" },
+
+  // Processo completo
+  trilha: { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", color: CORES.suave },
+  linkTrilha: { padding: 0, backgroundColor: "transparent", border: "none", color: CORES.suave, cursor: "pointer", fontSize: "14px", textDecoration: "underline" },
+  cnjGrande: { marginTop: "6px", fontSize: "16px", color: CORES.suave, fontVariantNumeric: "tabular-nums" as const },
+  faixa: { display: "flex", flexWrap: "wrap" as const, gap: "12px 32px", alignItems: "center", padding: "16px 20px", borderRadius: "8px" },
+  linhaTempo: { margin: 0, padding: "0 0 0 18px", listStyle: "none", borderLeft: `2px solid ${CORES.linha}` },
+  itemTempo: { position: "relative" as const, padding: "0 0 16px 12px" },
+  pontoTempo: { position: "absolute" as const, left: "-25px", top: "6px", width: "10px", height: "10px", boxSizing: "border-box" as const, borderRadius: "50%", backgroundColor: CORES.papel, border: `2px solid ${CORES.detalhe}` },
+  dataTempo: { fontSize: "13px", fontWeight: 600, color: CORES.detalheTexto },
+
+  // Janela da prévia da piscina
+  veu: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "48px 16px", boxSizing: "border-box" as const, overflowY: "auto" as const, backgroundColor: "rgba(17,30,37,0.55)" },
+  modalPrevia: { width: "100%", maxWidth: "680px", backgroundColor: CORES.papel, borderRadius: "10px", boxShadow: "0 24px 60px rgba(0,0,0,0.25)", overflow: "hidden" },
+  modalCab: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", padding: "24px 28px 18px", borderBottom: `1px solid ${CORES.linha}` },
+  tituloModalPrevia: { margin: 0, fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "28px", lineHeight: 1.15, color: CORES.marca },
+  btnFechar: { width: "44px", height: "44px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "transparent", border: "none", borderRadius: "6px", color: CORES.suave, cursor: "pointer" },
+  modalCorpo: { display: "flex", flexDirection: "column" as const, gap: "20px", padding: "22px 28px" },
+  modalPe: { display: "flex", flexWrap: "wrap" as const, justifyContent: "flex-end", gap: "10px", padding: "18px 28px", backgroundColor: "#FAF8F3", borderTop: `1px solid ${CORES.linha}` },
+  estimativa: { padding: "14px 16px", border: `1px solid ${CORES.linha}`, borderRadius: "8px" },
+  secao: { margin: "0 0 6px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.suave },
+  rotuloCampo: { display: "block", marginBottom: "6px", fontWeight: 600 },
+
+  // Cartões, tabelas, formulários e janelas (usados por todas as telas)
+  cardInfo: { padding: "20px", backgroundColor: CORES.papel, border: `1px solid ${CORES.linha}`, borderRadius: "8px", overflowX: "auto" as const },
+  tituloSecao: { marginTop: 0, paddingBottom: "8px", borderBottom: `2px solid ${CORES.detalhe}`, fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "22px", color: CORES.marca },
+  badgePrazo: { padding: "3px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" as const },
   gridInfo: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px", fontSize: "14px" },
-  label: { color: "#666", marginRight: "5px" },
-  valor: { fontWeight: "bold", color: "#333" },
-  badgeAtivo: { display: "inline-block", backgroundColor: "#e8f5e9", color: "#2e7d32", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const },
-  badgeEncerrado: { display: "inline-block", backgroundColor: "#ecf0f1", color: "#555", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #bdc3c7" },
-  badgePiscina: { display: "inline-block", backgroundColor: "#fff5f5", color: "#c0392b", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" as const, border: "1px solid #ffdce0" },
-  btnAssumir: { marginTop: "10px", backgroundColor: "#c0392b", color: "white", border: "none", padding: "8px 15px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const, width: "100%" },
-  btnAcaoBase: { backgroundColor: "#1a2a3a", color: "white", border: "none", padding: "10px 20px", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" as const },
-  modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, padding: "20px" },
-  modalContent: { backgroundColor: "white", padding: "30px", borderRadius: "8px", width: "420px", maxWidth: "100%", maxHeight: "90vh", overflowY: "auto" as const, boxShadow: "0 4px 15px rgba(0,0,0,0.2)" },
-  modalTituloDourado: { marginTop: 0, borderBottom: "2px solid #D4AF37", paddingBottom: "10px" },
-  modalTituloAzul: { marginTop: 0, borderBottom: "2px solid #1a2a3a", paddingBottom: "10px" },
-  modalTituloVermelho: { marginTop: 0, borderBottom: "2px solid #c0392b", paddingBottom: "10px" },
+  label: { display: "block", marginBottom: "6px", fontSize: "14px", fontWeight: 600, color: CORES.tinta },
+  valor: { fontWeight: 600, color: CORES.tinta },
+  badgeAtivo: { display: "inline-block", backgroundColor: "#e8f5e9", color: "#2e7d32", padding: "3px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600 },
+  badgeEncerrado: { display: "inline-block", backgroundColor: CORES.neutro.fundo, color: CORES.neutro.texto, padding: "3px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600 },
+  badgePiscina: { display: "inline-block", backgroundColor: CORES.urgente.fundo, color: CORES.urgente.texto, padding: "3px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600 },
+  btnAcaoBase: { display: "inline-flex", alignItems: "center", gap: "8px", minHeight: "44px", padding: "10px 20px", backgroundColor: CORES.marca, color: CORES.marcaTexto, border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "15px" },
+  modalOverlay: { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(23,36,43,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, padding: "20px" },
+  modalContent: { backgroundColor: CORES.papel, padding: "30px", borderRadius: "10px", width: "420px", maxWidth: "100%", maxHeight: "90vh", overflowY: "auto" as const, boxShadow: "0 24px 60px rgba(0,0,0,0.25)" },
+  modalTituloDourado: modalTitulo,
+  modalTituloAzul: modalTitulo,
+  modalTituloVermelho: modalTitulo,
   form: { display: "flex", flexDirection: "column" as const, gap: "15px" },
   linhaBotoes: { display: "flex", gap: "10px", marginTop: "10px" },
-  input: { width: "100%", padding: "10px", border: "1px solid #ccc", borderRadius: "4px", boxSizing: "border-box" as const },
-  btnCancelar: { flex: 1, padding: "10px", backgroundColor: "#ecf0f1", color: "#333", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const },
-  btnSalvar: { flex: 1, padding: "10px", backgroundColor: "#27ae60", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" as const },
-  cabecalhoAba: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
-  tituloAba: { margin: 0, color: "#1a2a3a" },
-  tabela: { width: "100%", borderCollapse: "collapse" as const, textAlign: "left" as const },
-  tabelaCabecalho: { borderBottom: "2px solid #ddd" },
-  tabelaLinha: { borderBottom: "1px solid #eee" },
-  th: { padding: "12px" },
-  td: { padding: "12px", verticalAlign: "top" as const },
-  tdVazio: { padding: "18px 12px", textAlign: "center" as const, color: "#666" },
-  textoSecundario: { color: "#777" },
-  btnMiniNeutro: { padding: "5px 10px", backgroundColor: "#ecf0f1", color: "#333", border: "1px solid #dfe4e6", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" as const },
-  btnConfirmarExclusao: { padding: "5px 10px", backgroundColor: "#c0392b", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" as const },
-  avisoSucesso: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#e8f5e9", color: "#2e7d32", border: "1px solid #c5e3c8", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: "bold" as const },
-  avisoErro: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#fdecea", color: "#c0392b", border: "1px solid #f5c6c2", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: "bold" as const },
-  btnFecharAviso: { background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: "16px", lineHeight: 1 },
+  input: { width: "100%", height: "44px", minHeight: "44px", padding: "10px 12px", boxSizing: "border-box" as const, backgroundColor: CORES.papel, color: CORES.tinta, border: "1px solid #C9C1B2", borderRadius: "6px", fontSize: "15px" },
+  btnCancelar: { flex: 1, minHeight: "44px", padding: "10px", backgroundColor: CORES.neutro.fundo, color: CORES.tinta, border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "15px" },
+  btnSalvar: { flex: 1, minHeight: "44px", padding: "10px", backgroundColor: CORES.marca, color: CORES.marcaTexto, border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "15px" },
+  cabecalhoAba: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "20px" },
+  tituloAba: { margin: 0, fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "32px", color: CORES.marca },
+  tabela: { width: "100%", minWidth: "760px", borderCollapse: "collapse" as const, textAlign: "left" as const },
+  tabelaCabecalho: { backgroundColor: "#FAF8F3" },
+  tabelaLinha: { borderBottom: `1px solid ${CORES.linha}` },
+  th: { padding: "12px 16px", borderBottom: `1px solid ${CORES.linha}`, fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, textAlign: "left" as const, whiteSpace: "nowrap" as const, color: CORES.suave },
+  td: { padding: "16px", verticalAlign: "top" as const },
+  // Célula com botões de 44px: menos espaço em cima para o texto do botão ficar na linha do texto das outras células
+  tdAcoes: { padding: "6px 16px 16px", verticalAlign: "top" as const, textAlign: "right" as const },
+  tdVazio: { padding: "18px 16px", textAlign: "center" as const, color: CORES.suave },
+  textoSecundario: { color: CORES.suave },
+  btnMiniNeutro: { minHeight: "44px", padding: "5px 12px", backgroundColor: CORES.papel, color: CORES.tinta, border: `1px solid ${CORES.linha}`, borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
+  btnConfirmarExclusao: { minHeight: "44px", padding: "5px 12px", backgroundColor: CORES.vencido.bola, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
+  avisoSucesso: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: "#e8f5e9", color: "#2e7d32", border: "1px solid #c5e3c8", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: 600 },
+  avisoErro: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", backgroundColor: CORES.vencido.fundo, color: CORES.vencido.texto, border: "1px solid #E3C2BE", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", fontWeight: 600 },
+  btnFecharAviso: { minWidth: "44px", minHeight: "44px", backgroundColor: "transparent", border: "none", cursor: "pointer", color: "inherit", fontSize: "16px", lineHeight: 1 },
   linhaCnj: { display: "flex", gap: "8px" },
-  btnBuscarDatajud: { padding: "0 12px", backgroundColor: "#1a2a3a", color: "white", border: "none", borderRadius: "4px", fontWeight: "bold" as const, whiteSpace: "nowrap" as const },
-  caixaDatajud: { marginTop: "10px", padding: "12px", backgroundColor: "#f4f7fa", border: "1px solid #d6e0ea", borderRadius: "4px", fontSize: "13px", display: "flex", flexDirection: "column" as const, gap: "4px" },
-  subtituloDatajud: { marginTop: "8px", fontWeight: "bold" as const, color: "#1a2a3a" },
+  btnBuscarDatajud: { minHeight: "44px", padding: "0 12px", backgroundColor: CORES.marca, color: CORES.marcaTexto, border: "none", borderRadius: "6px", fontWeight: 600, whiteSpace: "nowrap" as const },
+  caixaDatajud: { marginTop: "10px", padding: "12px", backgroundColor: CORES.fundo, border: `1px solid ${CORES.linha}`, borderRadius: "6px", fontSize: "13px", display: "flex", flexDirection: "column" as const, gap: "4px" },
+  subtituloDatajud: { marginTop: "8px", fontWeight: 600, color: CORES.marca },
   listaMovimentacoes: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" as const, gap: "4px" },
   itemMovimentacao: { display: "flex", gap: "8px" },
-  dataMovimentacao: { color: "#777", whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const },
-  notaDatajud: { marginTop: "8px", color: "#8a6d1a" },
-  avisoInline: { backgroundColor: "#fff8e1", border: "1px solid #ffe0a3", color: "#8a6d1a", padding: "10px", borderRadius: "4px", fontSize: "13px" }
+  dataMovimentacao: { color: CORES.suave, whiteSpace: "nowrap" as const, fontVariantNumeric: "tabular-nums" as const },
+  notaDatajud: { marginTop: "8px", color: CORES.detalheTexto },
+  avisoInline: { backgroundColor: CORES.urgente.fundo, border: "1px solid #E6D2B1", color: CORES.urgente.texto, padding: "10px", borderRadius: "6px", fontSize: "13px" }
 };
