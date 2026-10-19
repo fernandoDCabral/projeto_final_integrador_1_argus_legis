@@ -70,18 +70,21 @@ export default function RedefinirSenha({ token, onConcluir }: Props) {
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        <img src="/logo.jpg" alt="Argus Legis" style={logoStyle} />
+        <div style={marcaStyle}>
+          <div style={seloStyle} aria-hidden="true">A</div>
+          <div style={nomeMarcaStyle}>Argus Legis</div>
+        </div>
 
         {estado === 'validando' && (
           <>
-            <h2 style={titleStyle}>Verificando link...</h2>
+            <h1 style={titleStyle}>Verificando link...</h1>
             <p style={subtitleStyle}>Só um instante.</p>
           </>
         )}
 
         {estado === 'invalido' && (
           <>
-            <h2 style={titleStyle}>Link inválido</h2>
+            <h1 style={titleStyle}>Link inválido</h1>
             <div style={erroBoxStyle}>{erro}</div>
             <p style={subtitleStyle}>
               Links de redefinição valem por 1 hora e só podem ser usados uma vez.
@@ -91,7 +94,7 @@ export default function RedefinirSenha({ token, onConcluir }: Props) {
 
         {estado === 'concluido' && (
           <>
-            <h2 style={titleStyle}>Senha alterada!</h2>
+            <h1 style={titleStyle}>Senha alterada!</h1>
             <div style={sucessoStyle}>
               Sua nova senha já está valendo. Use-a para entrar no sistema.
             </div>
@@ -100,7 +103,7 @@ export default function RedefinirSenha({ token, onConcluir }: Props) {
 
         {estado === 'valido' && (
           <>
-            <h2 style={titleStyle}>Cadastrar nova senha</h2>
+            <h1 style={titleStyle}>Cadastrar nova senha</h1>
             <p style={subtitleStyle}>
               Olá, <strong>{dono?.nome}</strong>. Você está redefinindo a senha
               da conta <strong>{dono?.email}</strong>.
@@ -108,8 +111,8 @@ export default function RedefinirSenha({ token, onConcluir }: Props) {
 
             <form onSubmit={handleSubmit} style={formStyle}>
               <div style={fieldStyle}>
-                <label style={labelStyle}>Nova senha</label>
-                <input
+                <label htmlFor="campo-1" style={labelStyle}>Nova senha</label>
+                <input id="campo-1"
                   type="password"
                   style={inputStyle}
                   required
@@ -122,8 +125,8 @@ export default function RedefinirSenha({ token, onConcluir }: Props) {
               </div>
 
               <div style={fieldStyle}>
-                <label style={labelStyle}>Confirmar nova senha</label>
-                <input
+                <label htmlFor="campo-2" style={labelStyle}>Confirmar nova senha</label>
+                <input id="campo-2"
                   type="password"
                   style={inputStyle}
                   required
@@ -135,66 +138,81 @@ export default function RedefinirSenha({ token, onConcluir }: Props) {
               {erro && <p style={erroStyle}>{erro}</p>}
 
               <button type="submit" style={buttonStyle} disabled={enviando}>
-                {enviando ? 'SALVANDO...' : 'SALVAR NOVA SENHA'}
+                {enviando ? 'Salvando...' : 'Salvar nova senha'}
               </button>
             </form>
           </>
         )}
 
         {estado !== 'validando' && (
-          <button type="button" onClick={onConcluir} style={linkStyle}>
+          <div style={rodapeLinkStyle}><button type="button" onClick={onConcluir} style={linkStyle}>
             Ir para o login
-          </button>
+          </button></div>
         )}
       </div>
     </div>
   );
 }
 
-// --- ESTILOS ---
+// --- ESTILOS (identidade da Spec 007: petróleo, areia e cobre) ---
+const FONTE_TITULO = '"EB Garamond", Georgia, serif';
+
 const containerStyle = {
-  minHeight: '100vh', width: '100vw', display: 'flex',
-  justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a2a3a',
-  padding: '30px 0', boxSizing: 'border-box' as const
+  minHeight: '100vh', width: '100%', display: 'flex',
+  justifyContent: 'center', alignItems: 'center', backgroundColor: '#F3EFE7',
+  padding: '30px 16px', boxSizing: 'border-box' as const
 };
 
 const cardStyle = {
-  backgroundColor: 'white', padding: '30px', borderRadius: '10px',
-  width: '400px', maxWidth: '92vw', textAlign: 'center' as const,
-  boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+  backgroundColor: '#FFFFFF', padding: '32px', border: '1px solid #DDD6C9',
+  borderRadius: '10px', width: '420px', maxWidth: '100%',
+  boxSizing: 'border-box' as const, boxShadow: '0 12px 32px rgba(23,36,43,0.08)'
 };
 
-const logoStyle = { width: '90px', marginBottom: '12px' };
-const titleStyle = { color: '#1a2a3a', marginBottom: '8px', fontSize: '1.4rem' };
+const marcaStyle = { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' };
+const seloStyle = {
+  width: '40px', height: '40px', border: '1.5px solid #D49A6E', borderRadius: '50%',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontFamily: FONTE_TITULO, fontSize: '22px', fontWeight: 700, color: '#A35A2E'
+};
+const nomeMarcaStyle = {
+  fontFamily: FONTE_TITULO, fontSize: '24px', fontWeight: 600, letterSpacing: '0.04em', color: '#1E3D4C'
+};
+
+const titleStyle = {
+  fontFamily: FONTE_TITULO, fontSize: '32px', fontWeight: 600, color: '#1E3D4C', margin: '0 0 8px'
+};
 const subtitleStyle = {
-  color: '#666', fontSize: '13px', marginTop: 0, marginBottom: '22px', lineHeight: 1.5
+  color: '#55626A', fontSize: '15px', marginTop: 0, marginBottom: '22px', lineHeight: 1.5
+};
+const formStyle = {
+  display: 'flex', flexDirection: 'column' as const, gap: '14px'
+};
+const fieldStyle = { display: 'flex', flexDirection: 'column' as const, gap: '5px' };
+const labelStyle = { fontWeight: 600, color: '#17242B', fontSize: '14px' };
+const inputStyle = {
+  padding: '10px 12px', borderRadius: '6px', border: '1px solid #C9C1B2',
+  backgroundColor: '#FFFFFF', color: '#17242B', fontSize: '15px', minHeight: '46px',
+  width: '100%', boxSizing: 'border-box' as const
+};
+const erroStyle = { color: '#7E2424', fontSize: '14px', margin: 0, fontWeight: 600 };
+const buttonStyle = {
+  backgroundColor: '#1E3D4C', color: '#F1ECE2', padding: '12px 18px', border: 'none',
+  borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '15px',
+  minHeight: '48px', marginTop: '8px'
+};
+const linkStyle = {
+  background: 'none', border: 'none', borderBottom: '1px solid #D49A6E', color: '#1E3D4C',
+  cursor: 'pointer', fontSize: '14px', fontWeight: 600, padding: 0, minHeight: '32px'
 };
 const sucessoStyle = {
   backgroundColor: '#e8f5e9', color: '#2e7d32', border: '1px solid #c5e3c8',
   padding: '14px', borderRadius: '6px', fontSize: '14px', lineHeight: 1.5,
-  textAlign: 'left' as const
+  marginBottom: '16px'
 };
 const erroBoxStyle = {
-  backgroundColor: '#fdecea', color: '#c0392b', border: '1px solid #f5c6c2',
+  backgroundColor: '#F4E1DF', color: '#7E2424', border: '1px solid #E3C2BE',
   padding: '14px', borderRadius: '6px', fontSize: '14px', lineHeight: 1.5,
-  marginBottom: '16px', textAlign: 'left' as const
+  marginBottom: '16px'
 };
-const formStyle = {
-  display: 'flex', flexDirection: 'column' as const, gap: '14px',
-  textAlign: 'left' as const
-};
-const fieldStyle = { display: 'flex', flexDirection: 'column' as const, gap: '5px' };
-const labelStyle = { fontWeight: 'bold' as const, color: '#333', fontSize: '13px' };
-const inputStyle = {
-  padding: '9px', borderRadius: '4px', border: '1px solid #ccc',
-  backgroundColor: '#f7f7f7', width: '100%', boxSizing: 'border-box' as const
-};
-const erroStyle = { color: '#c0392b', fontSize: '13px', margin: 0, fontWeight: 'bold' as const };
-const buttonStyle = {
-  backgroundColor: '#D4AF37', color: 'white', padding: '11px', border: 'none',
-  borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' as const, marginTop: '8px'
-};
-const linkStyle = {
-  background: 'none', border: 'none', color: '#1a2a3a', cursor: 'pointer',
-  fontSize: '13px', marginTop: '18px', textDecoration: 'underline'
-};
+const rodapeLinkStyle = { marginTop: '18px', paddingTop: '18px', borderTop: '1px solid #DDD6C9' };
