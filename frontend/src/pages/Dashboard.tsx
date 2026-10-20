@@ -115,6 +115,8 @@ export default function Dashboard() {
   const [processoEmPrevia, setProcessoEmPrevia] = useState<any | null>(null);
   const [dataPublicacaoAssumir, setDataPublicacaoAssumir] = useState("");
   const [atualizandoDatajud, setAtualizandoDatajud] = useState(false);
+  // Vira true se a consulta ao DataJud passar de 5 s (mostra a frase de apoio)
+  const [consultaDemorada, setConsultaDemorada] = useState(false);
   const [erroPrevia, setErroPrevia] = useState("");
 
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
@@ -272,6 +274,17 @@ export default function Dashboard() {
     setDataPublicacaoAssumir(processo.data_publicacao_datajud ?? "");
     setErroPrevia("");
   };
+
+  // Depois de 5 s de consulta, mostra a frase "está demorando". O cleanup cancela
+  // o timer quando a consulta termina ou o componente sai da tela.
+  useEffect(() => {
+    if (!atualizandoDatajud) return;
+    const timer = setTimeout(() => setConsultaDemorada(true), 5000);
+    return () => {
+      clearTimeout(timer);
+      setConsultaDemorada(false);
+    };
+  }, [atualizandoDatajud]);
 
   // Chamada tanto pelo modal quanto pela tela do processo completo
   const handleAtualizarDatajud = async (processo: any) => {
@@ -683,6 +696,13 @@ export default function Dashboard() {
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
 
   // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
+  // Região de status sempre renderizada: leitor de tela só anuncia mudança numa região que já existe
+  const renderStatusDatajud = () => (
+    <div role="status" style={styles.textoSecundario}>
+      {atualizandoDatajud && (consultaDemorada ? "Está demorando mais que o normal. Aguarde." : "Consultando o DataJud...")}
+    </div>
+  );
+
   const renderSeloStatus = (processo: any) => (
     processo.status === "Encerrado"
       ? <span style={styles.badgeEncerrado}>Encerrado em {formatarData(processo.encerrado_em)}</span>
@@ -1416,9 +1436,19 @@ export default function Dashboard() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-start" }}>
             <button type="button" onClick={() => handleLiberarProcesso(processo.id)} style={styles.btnSecundario}>Liberar para a piscina</button>
             {processo.cnj && (
-              <button type="button" onClick={() => handleAtualizarDatajud(processo)} disabled={atualizandoDatajud} style={styles.btnAcaoBase}>
-                {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar do DataJud" : "Buscar no DataJud"}
-              </button>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => handleAtualizarDatajud(processo)}
+                  disabled={atualizandoDatajud}
+                  aria-busy={atualizandoDatajud}
+                  style={atualizandoDatajud ? { ...styles.btnAcaoBase, opacity: 0.7, cursor: "wait" } : styles.btnAcaoBase}
+                >
+                  {atualizandoDatajud && <span className="spinner" aria-hidden="true" />}
+                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar do DataJud" : "Buscar no DataJud"}
+                </button>
+                {renderStatusDatajud()}
+              </div>
             )}
           </div>
         </header>
@@ -1553,13 +1583,26 @@ export default function Dashboard() {
                 <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
               )}
               {processo.cnj && (
-                <button
-                  onClick={() => handleAtualizarDatajud(processo)}
-                  disabled={atualizandoDatajud}
-                  style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
-                >
-                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar dados do DataJud" : "Buscar no DataJud"}
-                </button>
+                <>
+                  <button
+                    onClick={() => handleAtualizarDatajud(processo)}
+                    disabled={atualizandoDatajud}
+                    aria-busy={atualizandoDatajud}
+                    style={{
+                      ...styles.btnMiniNeutro,
+                      marginTop: "8px",
+                      // Precisa de flex para alinhar o círculo ao texto
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      ...(atualizandoDatajud ? { opacity: 0.7, cursor: "wait" } : {}),
+                    }}
+                  >
+                    {atualizandoDatajud && <span className="spinner" aria-hidden="true" />}
+                    {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar dados do DataJud" : "Buscar no DataJud"}
+                  </button>
+                  {renderStatusDatajud()}
+                </>
               )}
             </div>
 

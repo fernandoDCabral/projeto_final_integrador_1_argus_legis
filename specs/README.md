@@ -30,3 +30,4 @@ pergunta o que falta e preenche o modelo.
 | 005 | [Quando e quem enviou a peça](005-quem-enviou-peca.md) | Implementada |
 | 006 | [Endereço do cliente com CEP](006-endereco-com-cep.md) | Implementada |
 | 007 | [Nova identidade visual e calendário de prazos](007-nova-identidade-visual.md) | Implementada |
+| 008 | [Feedback visual na consulta ao DataJud](008-feedback-consulta-datajud.md) | Aprovada |

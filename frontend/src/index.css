@@ -31,3 +31,24 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   outline: 2px solid #A35A2E;
   outline-offset: 2px;
 }
+
+/* Círculo girando de "consultando" (Spec 008). A cor vem do texto do botão. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: girar 0.8s linear infinite;
+}
+
+@keyframes girar {
+  to { transform: rotate(360deg); }
+}
+
+/* Quem desliga animações no sistema vê só o texto "Consultando..." */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { display: none; }
+}
