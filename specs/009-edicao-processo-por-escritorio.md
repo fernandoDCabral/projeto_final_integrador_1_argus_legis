@@ -1,5 +1,5 @@
 # Spec 009: Edição de processo presa ao escritório
-**Status:** Aprovada   **Data:** 2026-10-24
+**Status:** Implementada   **Data:** 2026-10-24
 **Relacionadas:** issue #88 · [Spec 008 — CNJ único por escritório](008-cnj-por-escritorio.md) (mexe na mesma rota)
 
 ## 1. Contexto
@@ -60,7 +60,8 @@
 - O projeto ainda não tem pasta de testes automatizados. A validação é pela API (script) e pela tela.
 ### Manual
 - [x] **Ação:** os 6 casos da seção 7 pela API, com os escritórios Teste87 13 e 14 (admins `teste87.a/b.5765@exemplo.com`, advogados `adv87.a/b.5765@exemplo.com`, senha `senha12345`) → **Esperado:** como na seção 7.
-- [ ] **Ação (Testador, tela):** ADVOGADO da "Conta de teste" assume o processo #24 (piscina) e depois libera → **Esperado:** os dois funcionam como antes; no fim o #24 volta para a piscina.
+- [x] **Ação (Testador, tela):** ADVOGADO da "Conta de teste" assume o processo #24 (piscina) e depois libera → **Esperado:** os dois funcionam como antes; no fim o #24 volta para a piscina.
+  - 24/10: 'Processo assumido!' e 'Processo devolvido à piscina.', sem erro. O prazo criado ao assumir foi apagado pela API no fim (PR #90).
 
 ## 9. Perguntas em Aberto
 - Nenhuma.
