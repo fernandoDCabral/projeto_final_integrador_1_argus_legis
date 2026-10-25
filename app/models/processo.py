@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
-from sqlalchemy import String, Integer, Boolean, Date, DateTime, ForeignKey, JSON, func
+from sqlalchemy import String, Integer, Boolean, Date, DateTime, ForeignKey, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING, Optional
 from ..database import Base
@@ -14,8 +14,12 @@ if TYPE_CHECKING:
 
 class Processo(Base):
     __tablename__ = "processos"
+    # O CNJ é único dentro de cada escritório, não no sistema todo (Spec 008)
+    __table_args__ = (
+        UniqueConstraint("escritorio_id", "cnj", name="uq_processos_escritorio_cnj"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cnj: Mapped[Optional[str]] = mapped_column(String(30), unique=True, index=True, nullable=True)
+    cnj: Mapped[Optional[str]] = mapped_column(String(30), index=True, nullable=True)
     titulo: Mapped[str] = mapped_column(String(100))
     tribunal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, server_default="TJCE")
     status: Mapped[str] = mapped_column(String(20))

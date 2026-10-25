@@ -33,11 +33,13 @@ def criar_processo(
         )
 
     # cnj é opcional (processo pode nascer sem protocolo), mas quando
-    # informado precisa ser único globalmente — checa antes do commit para
-    # não deixar a IntegrityError da constraint UNIQUE estourar como 500.
+    # informado precisa ser único dentro do escritório (Spec 008). Filtra
+    # pelo escritório para não mostrar título de processo de outro escritório
+    # e checa antes do commit para a constraint UNIQUE não estourar como 500.
     if processo.cnj:
         duplicado = db.query(models.Processo).filter(
-            models.Processo.cnj == processo.cnj
+            models.Processo.cnj == processo.cnj,
+            models.Processo.escritorio_id == current_user.escritorio_id
         ).first()
         if duplicado:
             raise HTTPException(
@@ -137,9 +139,11 @@ def atualizar_processo(
 
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
+    # Mesma regra do cadastro: CNJ único só dentro do escritório (Spec 008)
     if dados_dict.get("cnj"):
         duplicado = db.query(models.Processo).filter(
             models.Processo.cnj == dados_dict["cnj"],
+            models.Processo.escritorio_id == current_user.escritorio_id,
             models.Processo.id != processo_id
         ).first()
         if duplicado:
