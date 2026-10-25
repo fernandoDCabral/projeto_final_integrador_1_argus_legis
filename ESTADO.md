@@ -1,130 +1,57 @@
 # Estado do projeto — Argus Legis
 
-Retrato de **18/10/2026**, a partir da branch `feat/data-obrigatoria-assumir`.
+Retrato de **24/10/2026**, a partir da branch `fix/edicao-processo-escritorio` (`origin/main` segue no PR #83).
 Gerado pela skill `arruma-projeto` — o próximo retrato sobrescreve este.
-
-> Conferido em 18/10: o código não mudou desde 15/10 (`Dashboard.tsx` parado
-> desde 10/10, `origin/main` no PR #71, Docker parado). A novidade é o time de
-> agentes no Maestri, logo abaixo.
 
 ## Em andamento
 
-Trabalho no working tree, ainda sem nenhum commit. A branch saiu da `main` no
-PR #71 e não tem commits próprios.
+Nada no working tree (só a pasta `.maestri/`, não rastreada de propósito).
+As duas issues estão prontas e testadas, cada uma no seu PR, esperando merge.
 
-### Data da publicação obrigatória no "Assumir"
+### Issue #87 — CNJ único por escritório (Spec 008) → PR #89 aberto
 
-- **O que é:** o modal de prévia da piscina não deixa mais assumir sem a data
-  da publicação. O campo deixou de ser "(opcional)", ganhou asterisco, e o
-  prazo é sempre criado junto com o assumir. Quando o DataJud achou a
-  publicação, a data já vem preenchida (`Dashboard.tsx:166`) e o advogado pode
-  trocar.
-- **Por quê:** desde a Spec 002 o prazo só nasce da publicação, e a única tela
-  que cria prazo é o "Assumir". Quem assumia sem a data ficava com o processo
-  "Sem prazo aberto" para sempre — e o modal prometia o contrário ("o processo
-  fica sem prazo até você informar a publicação"). Era a ponta solta 1 do
-  retrato de 10/10.
-- **Decisões tomadas:** em 10/10 foi escrita e implementada uma Spec 004
-  ("Registrar publicação" no processo completo, aviso de publicação nova, API
-  recusando data futura) e **desfeita a pedido do Sávio**. A decisão final foi
-  só tornar a data obrigatória no Assumir, **sem formulário para publicações
-  seguintes**. Não existe `specs/004-...` — não recriar sem conversar.
-- **Arquivos:** [`frontend/src/pages/Dashboard.tsx`](frontend/src/pages/Dashboard.tsx)
-  (`handleAssumirProcesso`, linha ~249; texto do modal, linha ~1403)
-- **Falta:**
-  - ~~Testar no navegador~~ — **testado em 18/10 pelo Arquiteto**, os 4
-    casos ok (sem data, data sugerida, data trocada, sem publicação no
-    DataJud). Prazos #26 e #27 conferidos no banco. Deixou dados de teste:
-    "Escritorio Teste Assumir" com 2 usuários, 1 cliente, processos #23–#25
-    e prazos #26–#27 — apagar quando não servirem mais.
-  - Commitar (skill `commit`), abrir PR e o Sávio fazer o merge.
-  - Entrada no `CHANGELOG.md`.
+- **O que é:** a checagem de CNJ duplicado no cadastro e na edição de processo passa a olhar só o escritório do usuário, e o banco troca a regra "CNJ único na tabela" por "único no par (`escritorio_id`, `cnj`)" (migration `a7b8c9d0e1f2`).
+- **Por quê:** issue #87, reproduzida em 22/10 pela API — o escritório B recebia 409 com o **título do processo do escritório A** (vazamento) e não conseguia cadastrar um processo em que os dois atuam.
+- **Decisões tomadas** (brainstorm de 22/10, ver `specs/008-cnj-por-escritorio.md`):
+  - checagem por escritório **+** regra única no banco no par — e não só tirar a regra do banco (abriria duplicata no mesmo escritório com duas requisições ao mesmo tempo);
+  - **descartado** processo compartilhado entre escritórios (muda o modelo inteiro);
+  - **descartado** tratar o 500 do clique duplo (já existia, raro).
+- **Testado:** Pedreiro pela API e migration (10/10); Testador na tela (5/5 — o caso do 409 só pela API, porque o DataJud do TJCE estava com timeout).
+- **Branch:** `fix/cnj-por-escritorio` (5 commits), PR #89 — `MERGEABLE`, sem review em 24/10.
+- **Falta:** merge do #89 → spec 008 para `Implementada` → fechar a #87 à mão. O caso 4 (409) foi refeito na tela em 24/10: OK.
 
-### Este `ESTADO.md`
+### Issue #88 — Edição de processo presa ao escritório (Spec 009) → PR aberto
 
-Também aparece como modificado: é o retrato de 10/10, que nunca foi commitado,
-agora substituído por este.
-
-## Time de agentes no Maestri (montado em 17/10)
-
-Este terminal ("Argus Legis") é o **Maestro**. Dois agentes Claude Code,
-ligados só a ele:
-
-- **Pedreiro** — papel "Backend Argus": `app/`, `alembic/`, `requirements.txt`.
-- **Arquiteto** — papel "Frontend Argus": `frontend/`.
-
-- **Decisão:** toda comunicação passa pelo Maestro. A ligação direta
-  Pedreiro ↔ Arquiteto foi criada e **desfeita a pedido do Sávio**, para
-  testar primeiro esse formato. Se ficar lento, religar no canvas e devolver
-  aos papéis a instrução de falar um com o outro.
-- **Plano:** o Maestro faz o brainstorm e a spec (skills `brainstorming` e
-  `spec`) e depois distribui a spec para os dois implementarem.
-- Os papéis valem só para este workspace e mandam seguir as regras do Sávio
-  (código simples, sem commit/push/PR sem pedido, nunca derrubar o Docker).
-- Os agentes abrem em `.maestri/roles/<id>/`, não na raiz. Ao passar uma
-  tarefa, dizer o caminho do projeto.
-- Até agora só receberam mensagens de teste (diretório e uma piada). Nenhuma
-  tarefa real ainda.
-
-## Commits desta branch ainda não mergeados
-
-Nenhum. A `main` local é igual à `origin/main` (PR #71, 04/10) e ninguém
-publicou nada novo desde então.
+- **O que é:** o `PATCH /processos/{id}` (só ADVOGADO) aceita `escritorio_id`, `cliente_id` e `responsavel_id` e grava tudo com `setattr`, sem conferir o escritório. Pela API dá para mover um processo para outro escritório ou ligá-lo a cliente de outro escritório.
+- **Por quê:** achado do Pedreiro durante a #87; a issue foi aberta em 22/10.
+- **Decisões tomadas** (22/10): opção 1 —
+  - `escritorio_id` sai do `ProcessoUpdate` (ignorado se vier);
+  - `cliente_id` precisa ser do mesmo escritório, senão 404 "Cliente não encontrado neste escritório.";
+  - `responsavel_id` precisa ser ADVOGADO do mesmo escritório, senão 404; `null` continua aceito;
+  - 404 e não 403, pela regra do `autorizacao.py`;
+  - **descartado** "responsável só pode ser o próprio advogado" (fecha a porta de passar o processo a um colega);
+  - **descartado** rota própria de "assumir" (muda frontend e duas rotas, maior que a issue).
+- **Testado (24/10):** Pedreiro pela API (6/6 + extras); Testador na tela (assumir e liberar, 4/4).
+- **Branch:** `fix/edicao-processo-escritorio`, que saiu da `fix/cnj-por-escritorio` (mesma função do PR #89). O PR dela tem que entrar **depois** do #89.
+- **Falta:** merge → spec 009 para `Implementada` → fechar a #88 à mão.
 
 ## O que mudou no resto do time
 
-Nada desde 04/10. Última atividade remota: PRs #70 e #71 do Victor (liberar e
-excluir processo da piscina; README/CHANGELOG das peças), já na `main` e já
-descritos no retrato anterior. Sem risco de conflito com o `Dashboard.tsx`.
+- **`origin/feat/feedback-consulta-datajud`** (Victor, 19/10, **sem PR**): círculo girando no botão "Buscar no DataJud" e frase de apoio na demora. Mexe em `frontend/src/pages/Dashboard.tsx`, `frontend/src/index.css` e cria `specs/008-feedback-consulta-datajud.md`. A issue #84 foi fechada em 20/10 sem PR ligado, mas o código **não está na main**.
+  - **Conflito:** essa branch também usa o número **Spec 008**, e a linha 008 do `specs/README.md` conflita com o PR #89 (`git merge-tree` confirma conflito só nesse arquivo).
 
 ## Pontas soltas
 
-Da mais urgente para a menos.
-
-0. **Pasta `.maestri/` não rastreada** (papéis dos agentes). Decidir antes
-   do próximo commit: `.gitignore` ou versionar para o time.
-1. **A obrigatoriedade é só na tela.** O backend continua aceitando
-   `PATCH /processos/{id}` com `responsavel_id` sem prazo nenhum, e o PATCH e o
-   POST do prazo são duas chamadas separadas: se o POST falhar, o processo fica
-   assumido sem prazo, igual ao problema antigo. Para um projeto acadêmico
-   pode bastar — vale decidir conscientemente.
-2. **Processos já assumidos sem data continuam presos** em "Sem prazo aberto".
-   A mudança vale daqui para frente; os antigos não ganham como receber a data
-   (decisão de não ter formulário). Conferir no banco quantos existem quando o
-   Docker subir.
-3. **Aviso ao ADMIN quando o processo chega com prazo vencido** — pedido em
-   28/09, ainda não feito.
-4. **Tipo Administrativo com 30 dias úteis**
-   ([prazo_service.py:11](app/service/prazo_service.py#L11)) — processo com CNJ
-   é judicial e seguiria o CPC (15 dias úteis).
-   - **Por que 30:** ⚠️ não recuperável do repositório — confirmar com quem escreveu.
-5. **Aviso "este processo tem N peças" ao excluir** — anotado ao fechar a
-   Spec 003.
-6. **Filtro/ordenação da piscina por vencimento** — "vou fazer depois" (28/09).
-7. **`MELHORIAS.md` desatualizado** (27/09): itens 1 e 3 já resolvidos pela PR
-   #56 e nada das specs 001–003 lá.
-8. **12 branches remotas já mergeadas** no GitHub; **PR #21 do Fernando** aberto
-   desde 07/04; **stash antigo** em `dev-savio`.
-9. **O script `.claude/skills/arruma-projeto/scripts/coleta.sh` não existe** —
-   a skill o cita, mas a pasta `scripts/` nunca foi criada. A coleta foi feita
-   à mão.
-
-## Decisões que não estão no código
-
-- **Sem router no front.** Troca de tela por estado; F5 volta para o Painel.
-- **DataJud não conta prazo, só estima.** Os dados chegam com semanas de
-  atraso; a data da publicação é sempre confirmada pelo advogado no DJEN.
-- **Petição depois da *disponibilização*, não da publicação.**
-- **Sem formulário de publicações seguintes** (10/10) — ver acima.
-- **Merge de PR é feito pelo Sávio** (o modo automático do Claude Code bloqueia
-  `gh pr merge` e o GitHub não deixa o autor aprovar o próprio PR).
+1. **Dois "Spec 008".** O do Victor (19/10) é anterior ao nosso (22/10). Quem entrar depois na main precisa renumerar. Combinar com o Victor antes do merge do #89.
+2. **#87 e #88 fora do quadro.** No GitHub Projects a Sprint 5 tem só #85 (notificação por e-mail) e #86 (deploy).
+3. **Prazo que fica ao liberar** (Testador, 24/10): liberar não apaga o prazo; com o processo de volta na piscina e o prazo aberto, o card mostra "Sem prazo aberto". Mesmo assunto do prazo duplicado ao liberar/reassumir (nota "Conta de teste"). Sem issue.
+4. **Aviso de erro atrás do modal** (Testador, 24/10): no cadastro de processo, o 409 aparece no topo da página, coberto pelo formulário aberto. Sem issue.
+5. **Mensagem enganosa com o DataJud fora** (achado do Testador, antigo): diz "preencha os dados manualmente", mas o botão Cadastrar continua travado, porque a Spec 001 exige DataJud. Tirar esse trecho; sem issue ainda.
+6. **Dados de teste no banco local:** escritórios "Teste87" (ids 11 a 14), processos 26 a 35 e os usuários desses escritórios. Por causa deles o `downgrade` da migration `a7b8c9d0e1f2` falha localmente (CNJ repetido entre os escritórios 13 e 14).
+7. **Issue #78** (hiperlink para tribunais) continua aberta, fora da Sprint 5.
 
 ## Como retomar
 
-1. Abrir o OrbStack (o Docker está parado — o socket não responde) e subir os
-   containers: `docker compose up -d`.
-2. ~~Testar o "Assumir"~~ — feito em 18/10.
-3. Commitar o `Dashboard.tsx` (e, se quiser, este `ESTADO.md` e uma linha no
-   `CHANGELOG.md`), abrir o PR e fazer o merge.
-4. Próxima tarefa: decidir sobre as pontas 1 e 2, ou seguir para o aviso ao
-   ADMIN (ponta 3).
+1. Merge do PR #89 (#87) e depois o PR da #88 (nessa ordem).
+2. Specs 008 e 009 → `Implementada` no arquivo e no `specs/README.md`; fechar #87 e #88 à mão.
+3. Ambiente: `docker compose up -d` (OrbStack precisa estar aberto); migration em `a7b8c9d0e1f2` no banco local.
