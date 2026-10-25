@@ -152,6 +152,32 @@ def atualizar_processo(
                 detail=f"Já existe um processo com este CNJ: {duplicado.titulo}."
             )
 
+    # Cliente e responsável vêm do corpo, então precisam ser conferidos: sem
+    # isto dá para ligar o processo a gente de outro escritório (Spec 009)
+    if "cliente_id" in dados_dict:
+        cliente = db.query(models.Cliente).filter(
+            models.Cliente.id == dados_dict["cliente_id"],
+            models.Cliente.escritorio_id == current_user.escritorio_id
+        ).first()
+        if not cliente:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Cliente não encontrado neste escritório."
+            )
+
+    # responsavel_id null continua valendo (processo volta para a piscina)
+    if dados_dict.get("responsavel_id"):
+        advogado = db.query(models.Usuario).filter(
+            models.Usuario.id == dados_dict["responsavel_id"],
+            models.Usuario.escritorio_id == current_user.escritorio_id,
+            models.Usuario.perfil == "ADVOGADO"
+        ).first()
+        if not advogado:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Advogado não encontrado neste escritório."
+            )
+
     for chave, valor in dados_dict.items():
         setattr(processo_atual, chave, valor)
 

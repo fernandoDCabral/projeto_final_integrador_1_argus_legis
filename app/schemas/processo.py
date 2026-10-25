@@ -51,7 +51,7 @@ class ProcessoUpdate(BaseModel):
     tipo_processo: Optional[str] = None
     cliente_id: Optional[int] = None
     responsavel_id: Optional[int] = None
-    escritorio_id: Optional[int] = None
+    # Sem escritorio_id: processo nunca muda de escritório (Spec 009)
 
 
 class ProcessoResponse(ProcessoBase):
