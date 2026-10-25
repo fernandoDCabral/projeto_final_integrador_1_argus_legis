@@ -1,5 +1,5 @@
 # Spec 008: CNJ único por escritório
-**Status:** Aprovada   **Data:** 2026-10-22
+**Status:** Implementada   **Data:** 2026-10-22
 **Relacionadas:** issue #87 (Sprint 5)
 
 ## 1. Contexto
@@ -69,7 +69,8 @@
 - [x] **Ação:** admin do B cadastra o CNJ Y; advogado do B edita esse processo para o CNJ Z, que só o A tem → **Esperado:** 200.
 - [x] **Ação:** admin do A cadastra os CNJs X e W; advogado do A edita o W para o CNJ X → **Esperado:** 409 com o título do X do A.
 - [x] **Ação:** `alembic upgrade head`, `\d processos`, `alembic downgrade -1`, `alembic upgrade head` → **Esperado:** tudo sem erro; regra `uq_processos_escritorio_cnj` presente no fim.
-- [ ] **Ação (Testador, tela):** entrar como admin do Teste87 B e cadastrar o CNJ que o A já tem → **Esperado:** cadastro feito e nenhum título do A aparece.
+- [x] **Ação (Testador, tela):** entrar como admin do Teste87 B e cadastrar o CNJ que o A já tem → **Esperado:** cadastro feito e nenhum título do A aparece.
+  - Feito com o admin do Escritorio Teste Assumir e um CNJ real do escritório 8 (o DataJud não acha os CNJs inventados do Teste87). 22/10: cadastro feito, nenhum dado do escritório 8 apareceu. 24/10: o 409 com o CNJ do próprio #23 também foi conferido na tela (PR #89).
 
 ## 9. Perguntas em Aberto
 - Nenhuma.
