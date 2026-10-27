@@ -1,5 +1,5 @@
 # Spec 010: Data de publicação pelo DJEN
-**Status:** Aprovada   **Data:** 2026-10-25
+**Status:** Implementada   **Data:** 2026-10-25
 **Relacionadas:** Issue #94 · Spec 001 (detectar processo encerrado), Spec 002 (revisão da contagem de prazos), Spec 011 (DataJud: resposta parcial e timeout)
 
 ## 1. Contexto

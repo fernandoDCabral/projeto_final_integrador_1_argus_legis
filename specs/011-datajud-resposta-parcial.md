@@ -1,5 +1,5 @@
 # Spec 011: DataJud: resposta parcial e timeout
-**Status:** Aprovada   **Data:** 2026-10-26
+**Status:** Implementada   **Data:** 2026-10-26
 **Relacionadas:** Issue #92 · Spec 001 (detectar processo encerrado: o cadastro exige que o DataJud encontre o processo)
 
 ## 1. Contexto
