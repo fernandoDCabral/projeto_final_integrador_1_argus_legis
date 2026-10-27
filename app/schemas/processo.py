@@ -29,7 +29,13 @@ class ProcessoBase(BaseModel):
     assuntos: Optional[List[str]] = None
     movimentacoes: Optional[List[MovimentacaoDatajud]] = None
     datajud_atualizado_em: Optional[datetime] = None
-    data_publicacao_datajud: Optional[date] = None
+    data_publicacao: Optional[date] = None
+    # De onde veio a publicação (Spec 010); tipo, link e hash só com o DJEN
+    data_disponibilizacao: Optional[date] = None
+    fonte_publicacao: Optional[str] = None
+    tipo_publicacao: Optional[str] = None
+    link_publicacao: Optional[str] = None
+    hash_publicacao: Optional[str] = None
     peticao_apos_publicacao: bool = False
     # Data do arquivamento definitivo achado no DataJud (Spec 001)
     encerrado_em: Optional[date] = None
