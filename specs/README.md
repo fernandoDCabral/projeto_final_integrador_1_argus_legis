@@ -32,3 +32,4 @@ pergunta o que falta e preenche o modelo.
 | 007 | [Nova identidade visual e calendário de prazos](007-nova-identidade-visual.md) | Implementada |
 | 008 | [CNJ único por escritório](008-cnj-por-escritorio.md) | Implementada |
 | 009 | [Edição de processo presa ao escritório](009-edicao-processo-por-escritorio.md) | Implementada |
+| 011 | [DataJud: resposta parcial e timeout](011-datajud-resposta-parcial.md) | Aprovada |
