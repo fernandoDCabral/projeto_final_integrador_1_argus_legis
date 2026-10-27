@@ -34,9 +34,17 @@ class Processo(Base):
     assuntos: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
     movimentacoes: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
     datajud_atualizado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Última publicação no Diário achada no DataJud e o vencimento calculado a
-    # partir dela. É só estimativa: o advogado confirma a data ao assumir
-    data_publicacao_datajud: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Última publicação no Diário (DJEN ou DataJud, Spec 010) e o vencimento
+    # calculado a partir dela. É só estimativa: o advogado confirma ao assumir
+    data_publicacao: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Dia em que saiu no diário; a publicação é o dia útil seguinte
+    data_disponibilizacao: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # "DJEN" ou "DataJud". Tipo, link e hash só vêm quando a fonte é o DJEN
+    fonte_publicacao: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    tipo_publicacao: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    link_publicacao: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Com o hash a tela monta o link da certidão de publicação no CNJ
+    hash_publicacao: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     prazo_estimado: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     peticao_apos_publicacao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Data do arquivamento definitivo no DataJud. Preenchida = processo encerrado
