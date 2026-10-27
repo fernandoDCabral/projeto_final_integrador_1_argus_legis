@@ -12,7 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.service import prazo_service
+from app.service import djen_service, prazo_service
 
 logger = logging.getLogger("argus.datajud")
 
@@ -276,11 +276,13 @@ def consultar_processo(cnj: str, db: Session) -> dict:
     # A lista vem da mais recente para a mais antiga, então toda petição vista
     # antes de achar a publicação foi protocolada depois dela
     data_publicacao = None
+    data_disponibilizacao = None
     peticao_apos_publicacao = False
     for mov in movimentacoes:
         if mov["codigo"] == CODIGO_PETICAO:
             peticao_apos_publicacao = True
         if mov["codigo"] == CODIGO_DISPONIBILIZACAO_DJE:
+            data_disponibilizacao = mov["data"]
             data_publicacao = prazo_service.proximo_dia_util(db, mov["data"])
             break
 
@@ -296,6 +298,27 @@ def consultar_processo(cnj: str, db: Session) -> dict:
 
     if data_publicacao is None:
         peticao_apos_publicacao = False
+
+    fonte_publicacao = "DataJud" if data_publicacao else None
+    tipo_publicacao = link_publicacao = hash_publicacao = None
+
+    # O DJEN sai antes do DataJud, que recebe os dados com atraso. A
+    # publicação dele vale se for igual ou mais recente; no empate fica o
+    # DJEN porque traz tipo e link (Spec 010). Se o DJEN falhar, vem None e
+    # segue só com o DataJud
+    djen = djen_service.buscar_ultima_publicacao(digitos, db)
+    if djen and (data_publicacao is None or djen["data_publicacao"] >= data_publicacao):
+        data_publicacao = djen["data_publicacao"]
+        data_disponibilizacao = djen["data_disponibilizacao"]
+        fonte_publicacao = "DJEN"
+        tipo_publicacao = djen["tipo"]
+        link_publicacao = djen["link"]
+        hash_publicacao = djen["hash"]
+        # Indício de resposta: petição no DataJud depois da disponibilização
+        peticao_apos_publicacao = any(
+            mov["codigo"] == CODIGO_PETICAO and mov["data"] > data_disponibilizacao
+            for mov in movimentacoes
+        )
 
     # Encerrado = o último arquivamento definitivo é mais recente que a última
     # reativação ou desarquivamento. Olha todos os registros de 1º grau e
@@ -337,6 +360,11 @@ def consultar_processo(cnj: str, db: Session) -> dict:
         # Histórico completo; a tela decide quantas mostrar
         "movimentacoes": movimentacoes,
         "data_publicacao": data_publicacao,
+        "data_disponibilizacao": data_disponibilizacao,
+        "fonte_publicacao": fonte_publicacao,
+        "tipo_publicacao": tipo_publicacao,
+        "link_publicacao": link_publicacao,
+        "hash_publicacao": hash_publicacao,
         "peticao_apos_publicacao": peticao_apos_publicacao,
         "encerrado_em": encerrado_em,
     }
