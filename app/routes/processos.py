@@ -58,9 +58,9 @@ def criar_processo(
     # O status vem do DataJud, não do que foi digitado (Spec 001)
     novo_processo.status = "Encerrado" if novo_processo.encerrado_em else "Ativo"
     # Processo encerrado não tem prazo a cumprir (Spec 002)
-    if novo_processo.data_publicacao_datajud and not novo_processo.encerrado_em:
+    if novo_processo.data_publicacao and not novo_processo.encerrado_em:
         novo_processo.prazo_estimado = prazo_service.calcular_data_vencimento(
-            db, novo_processo.data_publicacao_datajud, novo_processo.tipo_processo)
+            db, novo_processo.data_publicacao, novo_processo.tipo_processo)
 
     # Nasce sem prazo: o prazo só existe a partir de uma publicação, que o
     # advogado informa ao assumir (Spec 002)
@@ -182,10 +182,10 @@ def atualizar_processo(
         setattr(processo_atual, chave, valor)
 
     # O tipo define quantos dias o prazo tem, então a estimativa muda junto
-    if ("tipo_processo" in dados_dict and processo_atual.data_publicacao_datajud
+    if ("tipo_processo" in dados_dict and processo_atual.data_publicacao
             and not processo_atual.encerrado_em):
         processo_atual.prazo_estimado = prazo_service.calcular_data_vencimento(
-            db, processo_atual.data_publicacao_datajud, processo_atual.tipo_processo)
+            db, processo_atual.data_publicacao, processo_atual.tipo_processo)
 
     db.commit()
     db.refresh(processo_atual)
@@ -247,7 +247,12 @@ def atualizar_dados_datajud(
     processo.assuntos = consulta.assuntos
     processo.movimentacoes = [m.model_dump(mode="json") for m in consulta.movimentacoes]
     processo.datajud_atualizado_em = consulta.atualizado_em
-    processo.data_publicacao_datajud = consulta.data_publicacao
+    processo.data_publicacao = consulta.data_publicacao
+    processo.data_disponibilizacao = consulta.data_disponibilizacao
+    processo.fonte_publicacao = consulta.fonte_publicacao
+    processo.tipo_publicacao = consulta.tipo_publicacao
+    processo.link_publicacao = consulta.link_publicacao
+    processo.hash_publicacao = consulta.hash_publicacao
     processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
     # Pode encerrar ou voltar a ficar ativo, se o processo foi reativado
     processo.encerrado_em = consulta.encerrado_em

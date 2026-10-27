@@ -37,6 +37,9 @@ const CORES = {
 };
 const FONTE_TITULO = '"EB Garamond", Georgia, serif';
 
+// Certidão de publicação do DJEN, servida pelo CNJ: o link é montado com o hash (Spec 010)
+const URL_CERTIDAO_DJEN = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
+
 type Situacao = "vencido" | "urgente" | "emdia" | "neutro";
 type AbaAdvogado = "painel" | "calendario" | "processos" | "piscina";
 
@@ -268,8 +271,8 @@ export default function Dashboard() {
   // --- AÇÕES DO ADVOGADO ---
   const abrirPrevia = (processo: any) => {
     setProcessoEmPrevia(processo);
-    // Sugere a publicação achada no DataJud; o advogado confere no DJEN
-    setDataPublicacaoAssumir(processo.data_publicacao_datajud ?? "");
+    // Sugere a publicação achada (DJEN ou DataJud); o advogado confere
+    setDataPublicacaoAssumir(processo.data_publicacao ?? "");
     setErroPrevia("");
   };
 
@@ -569,7 +572,12 @@ export default function Dashboard() {
           assuntos: consultaDatajud.assuntos,
           movimentacoes: consultaDatajud.movimentacoes,
           datajud_atualizado_em: consultaDatajud.atualizado_em,
-          data_publicacao_datajud: consultaDatajud.data_publicacao,
+          data_publicacao: consultaDatajud.data_publicacao,
+          data_disponibilizacao: consultaDatajud.data_disponibilizacao,
+          fonte_publicacao: consultaDatajud.fonte_publicacao,
+          tipo_publicacao: consultaDatajud.tipo_publicacao,
+          link_publicacao: consultaDatajud.link_publicacao,
+          hash_publicacao: consultaDatajud.hash_publicacao,
           peticao_apos_publicacao: consultaDatajud.peticao_apos_publicacao,
           encerrado_em: consultaDatajud.encerrado_em,
         })
@@ -662,7 +670,7 @@ export default function Dashboard() {
     const info = analisarPrazo(processo.prazo_estimado);
     // Mais de 30 dias vencida: neutra, sem alarme
     if (estimativaAntiga(processo)) {
-      return { tipo: "neutro", texto: `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao_datajud)})` };
+      return { tipo: "neutro", texto: `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao)})` };
     }
     // Venceu, mas há petição depois da publicação: talvez já respondida
     if (estimativaVencida(processo)) {
@@ -1542,7 +1550,18 @@ export default function Dashboard() {
               <div style={{ ...styles.estimativa, backgroundColor: corEstimativa.fundo, color: corEstimativa.texto }}>
                 <strong>{estimativaVencida(processo) ? "Prazo estimado venceu em" : "Prazo estimado:"} {formatarData(processo.prazo_estimado)}</strong>
                 <br />
-                Pela publicação de {formatarData(processo.data_publicacao_datajud)} encontrada no DataJud.
+                {/* Ex.: "Intimação, disponibilizada em 09/10/2026 e publicada em 13/10/2026 (fonte: DJEN)" */}
+                Pela publicação: {processo.tipo_publicacao && `${processo.tipo_publicacao}, `}
+                {processo.data_disponibilizacao && `disponibilizada em ${formatarData(processo.data_disponibilizacao)} e `}
+                publicada em {formatarData(processo.data_publicacao)}
+                {processo.fonte_publicacao && ` (fonte: ${processo.fonte_publicacao})`}
+                {/* Cada link só aparece se o campo existir; abrem em nova aba */}
+                {processo.link_publicacao && (
+                  <> · <a href={processo.link_publicacao} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>ver documento</a></>
+                )}
+                {processo.hash_publicacao && (
+                  <> · <a href={`${URL_CERTIDAO_DJEN}/${processo.hash_publicacao}/certidao`} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>certidão (PDF)</a></>
+                )}
               </div>
             )}
 
@@ -1575,16 +1594,21 @@ export default function Dashboard() {
 
             {!processo.responsavel && estimativaAntiga(processo) && (
               <div style={styles.textoSecundario}>
-                A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.
-                Confira no DJEN se existe publicação mais recente.
+                A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.{" "}
+                {processo.link_publicacao || processo.hash_publicacao
+                  ? "Confira nos links acima e no DJEN se existe publicação mais recente."
+                  : "Confira no DJEN se existe publicação mais recente."}
               </div>
             )}
 
             {!processo.responsavel && estimativaVencida(processo) && !estimativaAntiga(processo) && (
               <div style={styles.avisoInline}>
                 {processo.peticao_apos_publicacao
-                  ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
-                  : "O prazo desta publicação já venceu. Confira no DJEN se houve resposta ou se existe publicação mais recente."}
+                  ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida."
+                  : "O prazo desta publicação já venceu."}
+                {processo.link_publicacao || processo.hash_publicacao
+                  ? " Confira nos links acima e no DJEN se houve resposta ou se existe publicação mais recente."
+                  : " Confira no DJEN se houve resposta ou se existe publicação mais recente."}
               </div>
             )}
 
@@ -1601,9 +1625,11 @@ export default function Dashboard() {
                   onChange={e => setDataPublicacaoAssumir(e.target.value)}
                 />
                 <div style={{ ...styles.textoSecundario, fontSize: "13px", marginTop: "6px" }}>
-                  {processo.data_publicacao_datajud
-                    ? "Sugerida pela publicação encontrada no DataJud. Confira no DJEN; se a data certa for outra, troque aqui."
-                    : "Informe a data em que a publicação saiu no Diário (confira no DJEN)."}
+                  {!processo.data_publicacao
+                    ? "Informe a data em que a publicação saiu no Diário (confira no DJEN)."
+                    : processo.link_publicacao || processo.hash_publicacao
+                      ? `Sugerida pela publicação encontrada no ${processo.fonte_publicacao ?? "DataJud"}. Confira nos links acima; se a data certa for outra, troque aqui.`
+                      : `Sugerida pela publicação encontrada no ${processo.fonte_publicacao ?? "DataJud"}. Confira no DJEN; se a data certa for outra, troque aqui.`}
                 </div>
               </div>
             )}
@@ -2131,6 +2157,7 @@ const styles = {
   modalCorpo: { display: "flex", flexDirection: "column" as const, gap: "20px", padding: "22px 28px" },
   modalPe: { display: "flex", flexWrap: "wrap" as const, justifyContent: "flex-end", gap: "10px", padding: "18px 28px", backgroundColor: "#FAF8F3", borderTop: `1px solid ${CORES.linha}` },
   estimativa: { padding: "14px 16px", border: `1px solid ${CORES.linha}`, borderRadius: "8px" },
+  linkPublicacao: { color: "inherit", fontWeight: 600, textDecoration: "underline" },
   secao: { margin: "0 0 6px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.suave },
   rotuloCampo: { display: "block", marginBottom: "6px", fontWeight: 600 },
 
