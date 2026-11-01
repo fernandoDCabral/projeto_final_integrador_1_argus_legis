@@ -812,6 +812,28 @@ export default function Dashboard() {
     ) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>
   );
 
+  // Linha da publicação com os links do DJEN; usada no cadastro, na prévia e na tela completa
+  // Ex.: "Intimação, disponibilizada em 09/10/2026 e publicada em 13/10/2026 (fonte: DJEN) · ver documento"
+  const renderPublicacao = (dados: Pick<ConsultaDatajud,
+    "data_publicacao" | "data_disponibilizacao" | "tipo_publicacao" | "fonte_publicacao" | "link_publicacao" | "hash_publicacao">) => {
+    if (!dados.data_publicacao) return null;
+    return (
+      <>
+        {dados.tipo_publicacao && `${dados.tipo_publicacao}, `}
+        {dados.data_disponibilizacao && `disponibilizada em ${formatarData(dados.data_disponibilizacao)} e `}
+        publicada em {formatarData(dados.data_publicacao)}
+        {dados.fonte_publicacao && ` (fonte: ${dados.fonte_publicacao})`}
+        {/* Cada link só aparece se o campo existir; abrem em nova aba */}
+        {dados.link_publicacao && (
+          <> · <a href={dados.link_publicacao} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>ver documento</a></>
+        )}
+        {dados.hash_publicacao && (
+          <> · <a href={`${URL_CERTIDAO_DJEN}/${dados.hash_publicacao}/certidao`} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>certidão (PDF)</a></>
+        )}
+      </>
+    );
+  };
+
   // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
   const renderCaixaDatajud = (dados: Pick<ConsultaDatajud,
     "classe" | "orgao_julgador" | "grau" | "data_ajuizamento" | "assuntos" | "movimentacoes" | "atualizado_em" | "encerrado_em">) => (
@@ -1342,6 +1364,12 @@ export default function Dashboard() {
                 )}
 
                 {consultaDatajud && renderCaixaDatajud(consultaDatajud)}
+                {/* Fora da caixa porque a prévia também usa a caixa e já mostra a publicação */}
+                {consultaDatajud?.data_publicacao && (
+                  <div style={{ ...styles.textoSecundario, marginTop: "8px", overflowWrap: "anywhere" }}>
+                    Pela publicação: {renderPublicacao(consultaDatajud)}
+                  </div>
+                )}
               </div>
               <div>
                 <label htmlFor="campo-17" style={styles.label}>Título do Processo</label>
@@ -1456,6 +1484,7 @@ export default function Dashboard() {
               {renderDado("Cadastrado em", `${new Date(processo.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por ${processo.criador?.nome}`)}
               {renderDado("Órgão julgador", processo.orgao_julgador, true)}
               {renderDado("Assuntos", processo.assuntos?.length > 0 ? processo.assuntos.join(", ") : "", true)}
+              {renderDado("Última publicação", renderPublicacao(processo), true)}
             </dl>
           </section>
 
@@ -1550,18 +1579,7 @@ export default function Dashboard() {
               <div style={{ ...styles.estimativa, backgroundColor: corEstimativa.fundo, color: corEstimativa.texto }}>
                 <strong>{estimativaVencida(processo) ? "Prazo estimado venceu em" : "Prazo estimado:"} {formatarData(processo.prazo_estimado)}</strong>
                 <br />
-                {/* Ex.: "Intimação, disponibilizada em 09/10/2026 e publicada em 13/10/2026 (fonte: DJEN)" */}
-                Pela publicação: {processo.tipo_publicacao && `${processo.tipo_publicacao}, `}
-                {processo.data_disponibilizacao && `disponibilizada em ${formatarData(processo.data_disponibilizacao)} e `}
-                publicada em {formatarData(processo.data_publicacao)}
-                {processo.fonte_publicacao && ` (fonte: ${processo.fonte_publicacao})`}
-                {/* Cada link só aparece se o campo existir; abrem em nova aba */}
-                {processo.link_publicacao && (
-                  <> · <a href={processo.link_publicacao} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>ver documento</a></>
-                )}
-                {processo.hash_publicacao && (
-                  <> · <a href={`${URL_CERTIDAO_DJEN}/${processo.hash_publicacao}/certidao`} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>certidão (PDF)</a></>
-                )}
+                Pela publicação: {renderPublicacao(processo)}
               </div>
             )}
 
