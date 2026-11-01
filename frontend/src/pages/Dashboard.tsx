@@ -287,7 +287,7 @@ export default function Dashboard() {
       if (processoEmPrevia) abrirPrevia(data);
       if (processoAberto) setProcessoAberto(data);
     } catch (error) {
-      const texto = mensagemDeErro(error, "Não foi possível consultar o DataJud.");
+      const texto = mensagemDeErro(error, "Não foi possível consultar o processo.");
       // No modal o aviso geral ficaria escondido atrás do overlay
       if (processoEmPrevia) setErroPrevia(texto);
       else setAviso({ tipo: "erro", texto });
@@ -548,7 +548,7 @@ export default function Dashboard() {
       }));
     } catch (error) {
       // O erro fica dentro do modal: o aviso geral apareceria atrás do overlay
-      setErroDatajud(mensagemDeErro(error, "Não foi possível consultar o DataJud."));
+      setErroDatajud(mensagemDeErro(error, "Não foi possível consultar o processo."));
     } finally {
       setBuscandoDatajud(false);
     }
@@ -1333,7 +1333,7 @@ export default function Dashboard() {
                       cursor: somenteDigitos(formProcesso.cnj).length !== 20 || buscandoDatajud ? "not-allowed" : "pointer"
                     }}
                   >
-                    {buscandoDatajud ? "Buscando..." : "Buscar no DataJud"}
+                    {buscandoDatajud ? "Buscando..." : "Buscar processo"}
                   </button>
                 </div>
 
@@ -1380,7 +1380,7 @@ export default function Dashboard() {
                   // Só entra processo que o DataJud achou (Spec 001). Mudar o
                   // CNJ apaga a consulta, então trava de novo
                   disabled={clientes.length === 0 || !consultaDatajud}
-                  title={!consultaDatajud ? "Busque o processo no DataJud antes de cadastrar" : undefined}
+                  title={!consultaDatajud ? "Busque o processo antes de cadastrar" : undefined}
                 >
                   Cadastrar Processo
                 </button>
@@ -1425,7 +1425,7 @@ export default function Dashboard() {
             <button type="button" onClick={() => handleLiberarProcesso(processo.id)} style={styles.btnSecundario}>Liberar para a piscina</button>
             {processo.cnj && (
               <button type="button" onClick={() => handleAtualizarDatajud(processo)} disabled={atualizandoDatajud} style={styles.btnAcaoBase}>
-                {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar do DataJud" : "Buscar no DataJud"}
+                {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
               </button>
             )}
           </div>
@@ -1577,7 +1577,7 @@ export default function Dashboard() {
                   disabled={atualizandoDatajud}
                   style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
                 >
-                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar dados do DataJud" : "Buscar no DataJud"}
+                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
                 </button>
               )}
             </div>
