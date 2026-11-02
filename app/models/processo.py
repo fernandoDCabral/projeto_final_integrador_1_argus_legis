@@ -47,7 +47,7 @@ class Processo(Base):
     hash_publicacao: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     prazo_estimado: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     peticao_apos_publicacao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # Última vez que o Argus consultou o DJEN deste processo (Spec 012)
+    # Última vez que o Argus consultou o DJEN deste processo (Spec 013)
     djen_consultado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Data do arquivamento definitivo no DataJud. Preenchida = processo encerrado
     encerrado_em: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
