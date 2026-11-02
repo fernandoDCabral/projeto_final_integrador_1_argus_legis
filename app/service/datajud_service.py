@@ -305,7 +305,7 @@ def consultar_processo(cnj: str, db: Session) -> dict:
     # O DJEN sai antes do DataJud, que recebe os dados com atraso. A
     # publicação dele vale se for igual ou mais recente; no empate fica o
     # DJEN porque traz tipo e link (Spec 010). Se o DJEN falhar, segue só com
-    # o DataJud; djen_respondeu avisa a rota se pode gravar a consulta (Spec 012)
+    # o DataJud; djen_respondeu avisa a rota se pode gravar a consulta (Spec 013)
     djen_respondeu = True
     try:
         djen = djen_service.buscar_ultima_publicacao(digitos, db)
