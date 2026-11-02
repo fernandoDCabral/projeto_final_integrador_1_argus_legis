@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../services/api";
 import type { Cliente, TipoPessoa } from "../types/cliente";
-import type { ConsultaDatajud } from "../types/datajud";
+import type { ConsultaDatajud, ResultadoDjen } from "../types/datajud";
 import {
   formatarCpf,
   formatarCnpj,
@@ -75,6 +75,9 @@ const estiloEtiqueta = (tipo: Situacao) => ({
 
 // Mesma lista fixa do backend (app/routes/documentos.py) — Spec 003
 const TIPOS_DOCUMENTO = ["Petição inicial", "Contestação", "Réplica", "Recurso", "Petição (outras)"];
+
+// Mesmos dias do backend (PRAZOS_POR_TIPO): usados quando o prazo não tem "dias" gravado (Spec 012)
+const DIAS_POR_TIPO: { [tipo: string]: number } = { Civil: 15, Criminal: 10, Trabalhista: 8, Administrativo: 30 };
 
 const FORM_CLIENTE_VAZIO = {
   nome: "",
@@ -193,6 +196,18 @@ export default function Dashboard() {
   const [buscandoDatajud, setBuscandoDatajud] = useState(false);
   const [erroDatajud, setErroDatajud] = useState("");
 
+  // "Atualizar todos" pelo DJEN (Spec 012): uma linha por processo; null = janela fechada
+  const [linhasDjen, setLinhasDjen] = useState<{ processo: any; resultado: ResultadoDjen | "aguardando" }[] | null>(null);
+  const [rodandoDjen, setRodandoDjen] = useState(false);
+  const [forcarDjen, setForcarDjen] = useState(false);
+  // Ref e não estado: o laço precisa ver na hora que a janela foi fechada
+  const pararDjenRef = useRef(false);
+
+  // Prazo "A conferir" no cartão Prazos: dias digitados por prazo (id → texto do campo)
+  const [diasDigitados, setDiasDigitados] = useState<{ [prazoId: number]: string }>({});
+  const [salvandoPrazo, setSalvandoPrazo] = useState(false);
+  const [erroPrazo, setErroPrazo] = useState("");
+
   // Estados Globais
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState<Aviso>(null);
@@ -253,6 +268,8 @@ export default function Dashboard() {
   useEffect(() => {
     document.querySelector("main")?.scrollTo(0, 0);
     window.scrollTo(0, 0);
+    // Erro do cartão Prazos de um processo não pode aparecer em outro
+    setErroPrazo("");
   }, [abaAdvogado, processoAberto?.id]);
 
   // Carrega as peças do processo aberto (o completo tem prioridade sobre a prévia)
@@ -399,6 +416,65 @@ export default function Dashboard() {
     } catch (error) {
       setAviso({ tipo: "erro", texto: mensagemDeErro(error, "Não foi possível liberar este processo.") });
     }
+  };
+
+  // Prazo "A conferir" (Spec 012). Sem situação: só grava os dias e recalcula o vencimento.
+  // Confirmar manda os dias junto, para valer o que está no campo
+  const handleAtualizarPrazo = async (processo: any, prazo: any, situacao?: "Confirmado" | "Descartado") => {
+    const dias = Number(diasDigitados[prazo.id] ?? prazo.dias ?? DIAS_POR_TIPO[processo.tipo_processo]);
+    if (situacao !== "Descartado" && !(dias >= 1 && dias <= 365)) {
+      setErroPrazo("Informe de 1 a 365 dias.");
+      return;
+    }
+    setSalvandoPrazo(true);
+    setErroPrazo("");
+    try {
+      await api.patch(`/prazos/${prazo.id}`, situacao === "Descartado" ? { situacao } : { dias, ...(situacao && { situacao }) });
+      // Busca o processo de novo para a etiqueta, a faixa e o Painel ficarem certos
+      const { data } = await api.get(`/processos/${processo.id}`);
+      setProcessoAberto(data);
+      setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
+    } catch (error) {
+      setErroPrazo(mensagemDeErro(error, "Não foi possível salvar o prazo."));
+    } finally {
+      setSalvandoPrazo(false);
+    }
+  };
+
+  // --- ATUALIZAR TODOS PELO DJEN (Spec 012) ---
+  // Um processo por vez: mostra o progresso e respeita o limite do DJEN (429).
+  // Só consulta as linhas "aguardando", assim o "Tentar de novo" reaproveita a lista
+  const rodarDjen = async (linhasIniciais: { processo: any; resultado: ResultadoDjen | "aguardando" }[], forcar: boolean) => {
+    pararDjenRef.current = false;
+    setRodandoDjen(true);
+    let linhas = linhasIniciais;
+    setLinhasDjen(linhas);
+    for (let i = 0; i < linhas.length; i++) {
+      if (linhas[i].resultado !== "aguardando") continue;
+      let resultado: ResultadoDjen = "erro";
+      let processo = linhas[i].processo;
+      try {
+        const { data } = await api.post(`/processos/${processo.id}/djen`, null, { params: { forcar } });
+        resultado = data.resultado;
+        processo = data.processo;
+      } catch (error) {
+        // Qualquer falha da rota vira ✖ e a tela segue para o próximo
+        console.error("Erro ao atualizar pelo DJEN:", error);
+      }
+      // Janela fechada no meio: para depois do processo atual
+      if (pararDjenRef.current) break;
+      linhas = linhas.map((linha, j) => (j === i ? { processo, resultado } : linha));
+      setLinhasDjen(linhas);
+    }
+    setRodandoDjen(false);
+    if (pararDjenRef.current) carregarDados();
+  };
+
+  // Fechar recarrega a lista; no meio da atualização, quem recarrega é o rodarDjen ao parar
+  const fecharJanelaDjen = () => {
+    setLinhasDjen(null);
+    if (rodandoDjen) pararDjenRef.current = true;
+    else carregarDados();
   };
 
   // --- AÇÕES DO ADMIN ---
@@ -643,6 +719,14 @@ export default function Dashboard() {
       .filter((prazo: any) => !prazo.finalizado)
       .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento))[0];
 
+  // Publicação nova do DJEN que criou prazo e o advogado ainda não conferiu (Spec 012)
+  const temPrazoAConferir = (processo: any) =>
+    (processo.prazos ?? []).some((prazo: any) => prazo.situacao === "A conferir");
+
+  const renderEtiquetaConferir = () => (
+    <span style={{ ...estiloEtiqueta("urgente"), border: `1px solid ${CORES.urgente.bola}` }}>★ Nova publicação: confira o prazo</span>
+  );
+
   // Troca de tela do advogado; fechar o processo aberto evita que as peças dele
   // apareçam na prévia de outro processo
   const irPara = (aba: AbaAdvogado) => {
@@ -785,13 +869,79 @@ export default function Dashboard() {
     );
   };
 
-  // Usada na prévia e na tela do processo completo
-  const renderListaPrazos = (prazos: any[]) => (
-    prazos.length > 0 ? (
+  // Usada na prévia e na tela do processo completo. Conferir o prazo só no completo
+  const renderListaPrazos = (processo: any, completo: boolean) => {
+    // "A conferir" sobe para o topo, em destaque (Spec 012)
+    const prazos = [...(processo.prazos ?? [])].sort((a: any, b: any) =>
+      (b.situacao === "A conferir" ? 1 : 0) - (a.situacao === "A conferir" ? 1 : 0));
+    const padraoDias = DIAS_POR_TIPO[processo.tipo_processo];
+    // Criminal conta em dias corridos (Spec 002)
+    const rotuloDias = processo.tipo_processo === "Criminal" ? "Dias corridos" : "Dias úteis";
+    // Só o responsável confere; o ADMIN não chega ao processo completo
+    const podeConferir = completo && processo.responsavel?.id === user?.id;
+    return prazos.length > 0 ? (
       <ul style={styles.listaLinhas}>
-        {prazos.map((prazo, i) => {
+        {prazos.map((prazo: any, i: number) => {
           const infoPrazo = analisarPrazo(prazo.data_vencimento);
           const verbo = infoPrazo.dias! < 0 ? "venceu" : "vence";
+
+          // Descartado: fica no histórico, em cinza e riscado
+          if (prazo.situacao === "Descartado") {
+            return (
+              <li key={prazo.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha), color: CORES.suave }}>
+                <span style={{ minWidth: 0, textDecoration: "line-through" }}>Descartado: publicação de {formatarData(prazo.data_publicacao)}</span>
+                <span style={estiloEtiqueta("neutro")}>Descartado</span>
+              </li>
+            );
+          }
+
+          if (prazo.situacao === "A conferir") {
+            return (
+              <li key={prazo.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha), display: "block" }}>
+                <div style={styles.caixaConferir}>
+                  {renderEtiquetaConferir()}
+                  <strong style={{ display: "block", marginTop: "8px" }}>{prazo.descricao}</strong>
+                  {/* Links do DJEN: o processo guarda só a última publicação, que é a deste prazo */}
+                  {processo.data_publicacao === prazo.data_publicacao && (
+                    <span style={{ ...styles.segundaLinha, overflowWrap: "anywhere" }}>{renderPublicacao(processo)}</span>
+                  )}
+                  <span style={styles.segundaLinha}>
+                    {prazo.dias ?? padraoDias} {rotuloDias.toLowerCase()} · {verbo} {formatarData(prazo.data_vencimento)} ({infoPrazo.texto.toLowerCase()})
+                  </span>
+
+                  {podeConferir && (
+                    <>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", marginTop: "12px" }}>
+                        <label htmlFor={`dias-${prazo.id}`} style={{ ...styles.label, marginBottom: 0 }}>{rotuloDias}</label>
+                        <input
+                          id={`dias-${prazo.id}`}
+                          type="number"
+                          min={1}
+                          max={365}
+                          style={{ ...styles.input, width: "90px" }}
+                          value={diasDigitados[prazo.id] ?? String(prazo.dias ?? padraoDias)}
+                          onChange={e => setDiasDigitados({ ...diasDigitados, [prazo.id]: e.target.value })}
+                        />
+                        <button type="button" onClick={() => handleAtualizarPrazo(processo, prazo)} disabled={salvandoPrazo} style={styles.btnMiniNeutro}>
+                          Recalcular vencimento
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "10px" }}>
+                        <button type="button" onClick={() => handleAtualizarPrazo(processo, prazo, "Confirmado")} disabled={salvandoPrazo} style={styles.btnAcaoBase}>
+                          Confirmar prazo
+                        </button>
+                        <button type="button" onClick={() => handleAtualizarPrazo(processo, prazo, "Descartado")} disabled={salvandoPrazo} style={styles.btnSecundario}>
+                          Descartar (não gera prazo)
+                        </button>
+                      </div>
+                      {erroPrazo && <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroPrazo}</div>}
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          }
+
           return (
             <li key={prazo.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha) }}>
               <div style={{ minWidth: 0 }}>
@@ -809,8 +959,8 @@ export default function Dashboard() {
           );
         })}
       </ul>
-    ) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>
-  );
+    ) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>;
+  };
 
   // Linha da publicação com os links do DJEN; usada no cadastro, na prévia e na tela completa
   // Ex.: "Intimação, disponibilizada em 09/10/2026 e publicada em 13/10/2026 (fonte: DJEN) · ver documento"
@@ -1029,7 +1179,10 @@ export default function Dashboard() {
         {renderTopo(
           "Processos do escritório",
           `${processosAdmin.length} ${processosAdmin.length === 1 ? "processo" : "processos"} · ${naPiscina} aguardando advogado na piscina`,
-          <button onClick={() => setModalProcessoAberto(true)} style={styles.btnAcaoBase}>{icone(ICONES.mais, 16, 2)}Novo processo</button>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 16px" }}>
+            {renderAtualizarTodos(processosAdmin)}
+            <button onClick={() => setModalProcessoAberto(true)} style={styles.btnAcaoBase}>{icone(ICONES.mais, 16, 2)}Novo processo</button>
+          </div>
         )}
 
         <div style={{ ...styles.abasOrdem, alignSelf: "flex-start", flexWrap: "wrap" }} role="group" aria-label="Filtrar">
@@ -1079,7 +1232,10 @@ export default function Dashboard() {
                           <span style={{ ...estiloEtiqueta("urgente"), backgroundColor: CORES.papel, border: `1px dashed ${CORES.urgente.bola}` }}>Na piscina</span>
                         )}
                       </td>
-                      <td style={styles.td}><span style={estiloEtiqueta(prazoProc.tipo)}>{prazoProc.texto}</span></td>
+                      <td style={styles.td}>
+                        <span style={estiloEtiqueta(prazoProc.tipo)}>{prazoProc.texto}</span>
+                        {temPrazoAConferir(proc) && <div style={{ marginTop: "6px" }}>{renderEtiquetaConferir()}</div>}
+                      </td>
                       <td style={styles.tdAcoes}>
                         <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                           <button
@@ -1501,7 +1657,7 @@ export default function Dashboard() {
 
           <section style={styles.cartao} aria-label="Prazos">
             <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Prazos</h2></div>
-            {renderListaPrazos(processo.prazos)}
+            {renderListaPrazos(processo, true)}
           </section>
 
           <section style={styles.cartao} aria-label="Peças">
@@ -1602,7 +1758,7 @@ export default function Dashboard() {
 
             <div>
               <p style={styles.secao}>Prazos</p>
-              {renderListaPrazos(processo.prazos)}
+              {renderListaPrazos(processo, false)}
             </div>
 
             <div>
@@ -1662,6 +1818,123 @@ export default function Dashboard() {
             ) : (
               <button type="button" onClick={handleAssumirProcesso} style={styles.btnAcaoBase}>Assumir processo</button>
             )}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  // Botão "Atualizar todos" e a caixinha "Forçar": Meus processos e Processos do escritório (Spec 012)
+  const renderAtualizarTodos = (processos: any[]) => {
+    // Só os ativos; encerrado e processo sem CNJ não têm o que buscar no DJEN
+    const ativos = processos.filter(p => p.status !== "Encerrado" && p.cnj);
+    const travado = rodandoDjen || ativos.length === 0;
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 16px" }}>
+        {/* A dica fica na caixinha: no botão, o title tomava o lugar do "Atualizar todos" no leitor de tela */}
+        <label title="Sem marcar, pula os processos consultados no DJEN na última hora" style={{ display: "inline-flex", alignItems: "center", gap: "8px", minHeight: "44px", cursor: "pointer" }}>
+          <input type="checkbox" checked={forcarDjen} onChange={e => setForcarDjen(e.target.checked)} style={{ width: "18px", height: "18px" }} />
+          Forçar atualização de todos
+        </label>
+        <button
+          type="button"
+          onClick={() => rodarDjen(ativos.map(p => ({ processo: p, resultado: "aguardando" as const })), forcarDjen)}
+          disabled={travado}
+          style={{ ...styles.btnAcaoBase, opacity: travado ? 0.5 : 1, cursor: travado ? "not-allowed" : "pointer" }}
+        >
+          {rodandoDjen ? "Atualizando..." : "Atualizar todos"}
+        </button>
+      </div>
+    );
+  };
+
+  // Janela de progresso do "Atualizar todos": uma linha por processo e, no fim, o resumo
+  const renderJanelaDjen = () => {
+    if (!linhasDjen) return null;
+    const total = linhasDjen.length;
+    const feitos = linhasDjen.filter(l => l.resultado !== "aguardando").length;
+    const contar = (resultado: ResultadoDjen) => linhasDjen.filter(l => l.resultado === resultado).length;
+    const atual = linhasDjen.find(l => l.resultado === "aguardando");
+    // No fim, as novas publicações sobem para o topo
+    const linhas = rodandoDjen ? linhasDjen : [...linhasDjen].sort((a, b) =>
+      (b.resultado === "nova_publicacao" ? 1 : 0) - (a.resultado === "nova_publicacao" ? 1 : 0));
+
+    return (
+      <div style={styles.veu}>
+        <section style={styles.modalPrevia} role="dialog" aria-modal="true" aria-labelledby="titulo-djen">
+          <div style={styles.modalCab}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 id="titulo-djen" style={styles.tituloModalPrevia}>
+                {rodandoDjen ? `Atualizando pelo DJEN... ${feitos} de ${total}` : `Atualização pelo DJEN: ${feitos} de ${total}`}
+              </h2>
+              <div role="progressbar" aria-label="Progresso" aria-valuemin={0} aria-valuemax={total} aria-valuenow={feitos} style={styles.barraFundo}>
+                <div style={{ ...styles.barra, width: `${total > 0 ? (feitos / total) * 100 : 0}%` }} />
+              </div>
+            </div>
+            <button type="button" onClick={fecharJanelaDjen} aria-label="Fechar" style={styles.btnFechar}>{icone(ICONES.fechar, 18, 2)}</button>
+          </div>
+
+          <div style={styles.modalCorpo}>
+            {!rodandoDjen && (
+              <div role="status" style={{ fontWeight: 600 }}>
+                {[
+                  `${contar("nova_publicacao")} com nova publicação`,
+                  `${contar("sem_novidade")} sem novidade`,
+                  `${contar("pulado")} ${contar("pulado") === 1 ? "pulado" : "pulados"}`,
+                  `${contar("erro")} com erro`,
+                ].join(" · ")}
+              </div>
+            )}
+
+            <ul style={styles.listaLinhas}>
+              {linhas.map((linha, i) => {
+                const { processo, resultado } = linha;
+                // Hora em que o Argus consultou o DJEN, para o "pulado"
+                const hora = processo.djen_consultado_em
+                  ? new Date(processo.djen_consultado_em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })
+                  : "";
+                const texto =
+                  resultado === "nova_publicacao" ? `★ Nova publicação${processo.data_publicacao ? ` de ${formatarData(processo.data_publicacao)}` : ""}${temPrazoAConferir(processo) ? ": confira o prazo" : ""}`
+                  : resultado === "sem_novidade" ? "✔ Sem novidade"
+                  : resultado === "pulado" ? `– Pulado (atualizado ${hora ? `às ${hora}` : "na última hora"})`
+                  : resultado === "erro" ? "✖ DJEN não respondeu"
+                  : linha === atual && rodandoDjen ? "Consultando..." : "Aguardando";
+                const cor =
+                  resultado === "nova_publicacao" ? CORES.urgente.texto
+                  : resultado === "sem_novidade" ? "#2e7d32"
+                  : resultado === "erro" ? CORES.vencido.texto
+                  : CORES.suave;
+                return (
+                  <li key={processo.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha), alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ fontVariantNumeric: "tabular-nums" }}>{formatarCnj(processo.cnj)}</strong>
+                      <span style={styles.segundaLinha}>{processo.titulo}</span>
+                      <span style={{ display: "block", marginTop: "2px", fontWeight: 600, color: cor }}>{texto}</span>
+                    </div>
+                    {/* O ADMIN não tem a tela do processo completo */}
+                    {resultado === "nova_publicacao" && !rodandoDjen && user?.perfil !== "ADMIN" && (
+                      <button type="button" onClick={() => { fecharJanelaDjen(); abrirProcessoCompleto(processo); }} style={styles.btnMiniNeutro}>
+                        Abrir processo
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div style={styles.modalPe}>
+            {!rodandoDjen && contar("erro") > 0 && (
+              // Com "forçar": quem deu erro pode ter sido consultado há pouco e não pode ser pulado
+              <button
+                type="button"
+                onClick={() => rodarDjen(linhasDjen.map(l => (l.resultado === "erro" ? { ...l, resultado: "aguardando" as const } : l)), true)}
+                style={styles.btnSecundario}
+              >
+                Tentar de novo os com erro
+              </button>
+            )}
+            <button type="button" onClick={fecharJanelaDjen} style={styles.btnAcaoBase}>{rodandoDjen ? "Parar e fechar" : "Fechar"}</button>
           </div>
         </section>
       </div>
@@ -1832,6 +2105,7 @@ export default function Dashboard() {
                           <strong>{prazo.processo.titulo}</strong>
                           <div style={styles.cnj}>{formatarCnj(prazo.processo.cnj)} · {prazo.processo.tribunal}</div>
                           <span style={{ ...estiloEtiqueta(situacao.tipo), marginTop: "4px" }}>{situacao.texto}</span>
+                          {temPrazoAConferir(prazo.processo) && <div style={{ marginTop: "6px" }}>{renderEtiquetaConferir()}</div>}
                         </div>
                       </li>
                     );
@@ -1900,7 +2174,7 @@ export default function Dashboard() {
 
     return (
       <div style={styles.conteudo}>
-        {renderTopo("Meus processos", `${meusProcessos.length} ${meusProcessos.length === 1 ? "processo sob" : "processos sob"} sua responsabilidade`)}
+        {renderTopo("Meus processos", `${meusProcessos.length} ${meusProcessos.length === 1 ? "processo sob" : "processos sob"} sua responsabilidade`, renderAtualizarTodos(meusProcessos))}
 
         <div style={styles.filtros}>
           <label style={styles.busca}>
@@ -1961,6 +2235,7 @@ export default function Dashboard() {
                           {infoPrazo.texto}{vencimento ? ` · ${formatarData(vencimento).slice(0, 5)}` : ""}
                         </span>
                       )}
+                      {temPrazoAConferir(processo) && <div style={{ marginTop: "6px" }}>{renderEtiquetaConferir()}</div>}
                     </td>
                     <td style={styles.tdAcoes}>
                       <button type="button" onClick={() => setProcessoAberto(processo)} style={styles.linkAcao}>Abrir</button>
@@ -2060,6 +2335,7 @@ export default function Dashboard() {
 
         {/* A prévia abre do Painel e da Piscina */}
         {user?.perfil !== "ADMIN" && renderModalPrevia()}
+        {renderJanelaDjen()}
       </main>
     </div>
   );
@@ -2218,6 +2494,10 @@ const styles = {
   btnFecharAviso: { minWidth: "44px", minHeight: "44px", backgroundColor: "transparent", border: "none", cursor: "pointer", color: "inherit", fontSize: "16px", lineHeight: 1 },
   linhaCnj: { display: "flex", gap: "8px" },
   btnBuscarDatajud: { minHeight: "44px", padding: "0 12px", backgroundColor: CORES.marca, color: CORES.marcaTexto, border: "none", borderRadius: "6px", fontWeight: 600, whiteSpace: "nowrap" as const },
+  // Atualizar todos pelo DJEN e prazo "A conferir" (Spec 012)
+  barraFundo: { height: "8px", marginTop: "12px", backgroundColor: CORES.neutro.fundo, borderRadius: "999px", overflow: "hidden" },
+  barra: { height: "100%", backgroundColor: CORES.marca, transition: "width 0.3s" },
+  caixaConferir: { padding: "14px 16px", backgroundColor: "#FBF3E6", border: `1px solid ${CORES.urgente.bola}`, borderRadius: "8px" },
   caixaDatajud: { marginTop: "10px", padding: "12px", backgroundColor: CORES.fundo, border: `1px solid ${CORES.linha}`, borderRadius: "6px", fontSize: "13px", display: "flex", flexDirection: "column" as const, gap: "4px" },
   subtituloDatajud: { marginTop: "8px", fontWeight: 600, color: CORES.marca },
   listaMovimentacoes: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" as const, gap: "4px" },
