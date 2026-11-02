@@ -28,5 +28,5 @@ export interface ConsultaDatajud {
   encerrado_em: string | null; // arquivamento definitivo (Spec 001)
 }
 
-// Resposta de POST /processos/{id}/djen (Spec 012): o processo vem junto, já atualizado
+// Resposta de POST /processos/{id}/djen (Spec 013): o processo vem junto, já atualizado
 export type ResultadoDjen = "nova_publicacao" | "sem_novidade" | "pulado" | "erro";
