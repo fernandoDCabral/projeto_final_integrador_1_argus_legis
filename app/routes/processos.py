@@ -33,11 +33,13 @@ def criar_processo(
         )
 
     # cnj é opcional (processo pode nascer sem protocolo), mas quando
-    # informado precisa ser único globalmente — checa antes do commit para
-    # não deixar a IntegrityError da constraint UNIQUE estourar como 500.
+    # informado precisa ser único dentro do escritório (Spec 008). Filtra
+    # pelo escritório para não mostrar título de processo de outro escritório
+    # e checa antes do commit para a constraint UNIQUE não estourar como 500.
     if processo.cnj:
         duplicado = db.query(models.Processo).filter(
-            models.Processo.cnj == processo.cnj
+            models.Processo.cnj == processo.cnj,
+            models.Processo.escritorio_id == current_user.escritorio_id
         ).first()
         if duplicado:
             raise HTTPException(
@@ -56,9 +58,9 @@ def criar_processo(
     # O status vem do DataJud, não do que foi digitado (Spec 001)
     novo_processo.status = "Encerrado" if novo_processo.encerrado_em else "Ativo"
     # Processo encerrado não tem prazo a cumprir (Spec 002)
-    if novo_processo.data_publicacao_datajud and not novo_processo.encerrado_em:
+    if novo_processo.data_publicacao and not novo_processo.encerrado_em:
         novo_processo.prazo_estimado = prazo_service.calcular_data_vencimento(
-            db, novo_processo.data_publicacao_datajud, novo_processo.tipo_processo)
+            db, novo_processo.data_publicacao, novo_processo.tipo_processo)
 
     # Nasce sem prazo: o prazo só existe a partir de uma publicação, que o
     # advogado informa ao assumir (Spec 002)
@@ -137,9 +139,11 @@ def atualizar_processo(
 
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
+    # Mesma regra do cadastro: CNJ único só dentro do escritório (Spec 008)
     if dados_dict.get("cnj"):
         duplicado = db.query(models.Processo).filter(
             models.Processo.cnj == dados_dict["cnj"],
+            models.Processo.escritorio_id == current_user.escritorio_id,
             models.Processo.id != processo_id
         ).first()
         if duplicado:
@@ -148,14 +152,40 @@ def atualizar_processo(
                 detail=f"Já existe um processo com este CNJ: {duplicado.titulo}."
             )
 
+    # Cliente e responsável vêm do corpo, então precisam ser conferidos: sem
+    # isto dá para ligar o processo a gente de outro escritório (Spec 009)
+    if "cliente_id" in dados_dict:
+        cliente = db.query(models.Cliente).filter(
+            models.Cliente.id == dados_dict["cliente_id"],
+            models.Cliente.escritorio_id == current_user.escritorio_id
+        ).first()
+        if not cliente:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Cliente não encontrado neste escritório."
+            )
+
+    # responsavel_id null continua valendo (processo volta para a piscina)
+    if dados_dict.get("responsavel_id"):
+        advogado = db.query(models.Usuario).filter(
+            models.Usuario.id == dados_dict["responsavel_id"],
+            models.Usuario.escritorio_id == current_user.escritorio_id,
+            models.Usuario.perfil == "ADVOGADO"
+        ).first()
+        if not advogado:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Advogado não encontrado neste escritório."
+            )
+
     for chave, valor in dados_dict.items():
         setattr(processo_atual, chave, valor)
 
     # O tipo define quantos dias o prazo tem, então a estimativa muda junto
-    if ("tipo_processo" in dados_dict and processo_atual.data_publicacao_datajud
+    if ("tipo_processo" in dados_dict and processo_atual.data_publicacao
             and not processo_atual.encerrado_em):
         processo_atual.prazo_estimado = prazo_service.calcular_data_vencimento(
-            db, processo_atual.data_publicacao_datajud, processo_atual.tipo_processo)
+            db, processo_atual.data_publicacao, processo_atual.tipo_processo)
 
     db.commit()
     db.refresh(processo_atual)
@@ -217,7 +247,12 @@ def atualizar_dados_datajud(
     processo.assuntos = consulta.assuntos
     processo.movimentacoes = [m.model_dump(mode="json") for m in consulta.movimentacoes]
     processo.datajud_atualizado_em = consulta.atualizado_em
-    processo.data_publicacao_datajud = consulta.data_publicacao
+    processo.data_publicacao = consulta.data_publicacao
+    processo.data_disponibilizacao = consulta.data_disponibilizacao
+    processo.fonte_publicacao = consulta.fonte_publicacao
+    processo.tipo_publicacao = consulta.tipo_publicacao
+    processo.link_publicacao = consulta.link_publicacao
+    processo.hash_publicacao = consulta.hash_publicacao
     processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
     # Pode encerrar ou voltar a ficar ativo, se o processo foi reativado
     processo.encerrado_em = consulta.encerrado_em

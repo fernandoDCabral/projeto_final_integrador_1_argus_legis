@@ -37,6 +37,9 @@ const CORES = {
 };
 const FONTE_TITULO = '"EB Garamond", Georgia, serif';
 
+// Certidão de publicação do DJEN, servida pelo CNJ: o link é montado com o hash (Spec 010)
+const URL_CERTIDAO_DJEN = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
+
 type Situacao = "vencido" | "urgente" | "emdia" | "neutro";
 type AbaAdvogado = "painel" | "calendario" | "processos" | "piscina";
 
@@ -117,7 +120,10 @@ export default function Dashboard() {
   const [atualizandoDatajud, setAtualizandoDatajud] = useState(false);
   // Vira true se a consulta ao DataJud passar de 5 s (mostra a frase de apoio)
   const [consultaDemorada, setConsultaDemorada] = useState(false);
+  // Erro de "Assumir": aparece no fim da janela, perto do botão do rodapé
   const [erroPrevia, setErroPrevia] = useState("");
+  // Erro da consulta ao DataJud na prévia: aparece logo abaixo do botão de consultar
+  const [erroConsultaPrevia, setErroConsultaPrevia] = useState("");
 
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
   const [abaAdvogado, setAbaAdvogado] = useState<AbaAdvogado>("painel");
@@ -270,9 +276,10 @@ export default function Dashboard() {
   // --- AÇÕES DO ADVOGADO ---
   const abrirPrevia = (processo: any) => {
     setProcessoEmPrevia(processo);
-    // Sugere a publicação achada no DataJud; o advogado confere no DJEN
-    setDataPublicacaoAssumir(processo.data_publicacao_datajud ?? "");
+    // Sugere a publicação achada (DJEN ou DataJud); o advogado confere
+    setDataPublicacaoAssumir(processo.data_publicacao ?? "");
     setErroPrevia("");
+    setErroConsultaPrevia("");
   };
 
   // Depois de 5 s de consulta, mostra a frase "está demorando". O cleanup cancela
@@ -290,6 +297,7 @@ export default function Dashboard() {
   const handleAtualizarDatajud = async (processo: any) => {
     setAtualizandoDatajud(true);
     setErroPrevia("");
+    setErroConsultaPrevia("");
     try {
       const { data } = await api.post(`/processos/${processo.id}/datajud`);
       setPiscinaProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
@@ -297,9 +305,9 @@ export default function Dashboard() {
       if (processoEmPrevia) abrirPrevia(data);
       if (processoAberto) setProcessoAberto(data);
     } catch (error) {
-      const texto = mensagemDeErro(error, "Não foi possível consultar o DataJud.");
+      const texto = mensagemDeErro(error, "Não foi possível consultar o processo.");
       // No modal o aviso geral ficaria escondido atrás do overlay
-      if (processoEmPrevia) setErroPrevia(texto);
+      if (processoEmPrevia) setErroConsultaPrevia(texto);
       else setAviso({ tipo: "erro", texto });
     } finally {
       setAtualizandoDatajud(false);
@@ -558,7 +566,7 @@ export default function Dashboard() {
       }));
     } catch (error) {
       // O erro fica dentro do modal: o aviso geral apareceria atrás do overlay
-      setErroDatajud(mensagemDeErro(error, "Não foi possível consultar o DataJud."));
+      setErroDatajud(mensagemDeErro(error, "Não foi possível consultar o processo."));
     } finally {
       setBuscandoDatajud(false);
     }
@@ -582,7 +590,12 @@ export default function Dashboard() {
           assuntos: consultaDatajud.assuntos,
           movimentacoes: consultaDatajud.movimentacoes,
           datajud_atualizado_em: consultaDatajud.atualizado_em,
-          data_publicacao_datajud: consultaDatajud.data_publicacao,
+          data_publicacao: consultaDatajud.data_publicacao,
+          data_disponibilizacao: consultaDatajud.data_disponibilizacao,
+          fonte_publicacao: consultaDatajud.fonte_publicacao,
+          tipo_publicacao: consultaDatajud.tipo_publicacao,
+          link_publicacao: consultaDatajud.link_publicacao,
+          hash_publicacao: consultaDatajud.hash_publicacao,
           peticao_apos_publicacao: consultaDatajud.peticao_apos_publicacao,
           encerrado_em: consultaDatajud.encerrado_em,
         })
@@ -675,7 +688,7 @@ export default function Dashboard() {
     const info = analisarPrazo(processo.prazo_estimado);
     // Mais de 30 dias vencida: neutra, sem alarme
     if (estimativaAntiga(processo)) {
-      return { tipo: "neutro", texto: `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao_datajud)})` };
+      return { tipo: "neutro", texto: `Sem prazo em aberto (última publicação em ${formatarData(processo.data_publicacao)})` };
     }
     // Venceu, mas há petição depois da publicação: talvez já respondida
     if (estimativaVencida(processo)) {
@@ -695,14 +708,16 @@ export default function Dashboard() {
 
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
 
-  // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
-  // Região de status sempre renderizada: leitor de tela só anuncia mudança numa região que já existe
+  // Região de status sempre renderizada: leitor de tela só anuncia mudança numa região que já existe.
+  // width 0 + minWidth 100%: o texto quebra na largura do botão em vez de alargar o contêiner,
+  // senão a frase longa empurra o botão para outra linha do cabeçalho (flex-wrap)
   const renderStatusDatajud = () => (
-    <div role="status" style={styles.textoSecundario}>
+    <div role="status" style={{ ...styles.textoSecundario, width: 0, minWidth: "100%" }}>
       {atualizandoDatajud && (consultaDemorada ? "Está demorando mais que o normal. Aguarde." : "Consultando o DataJud...")}
     </div>
   );
 
+  // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
   const renderSeloStatus = (processo: any) => (
     processo.status === "Encerrado"
       ? <span style={styles.badgeEncerrado}>Encerrado em {formatarData(processo.encerrado_em)}</span>
@@ -823,6 +838,28 @@ export default function Dashboard() {
       </ul>
     ) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>
   );
+
+  // Linha da publicação com os links do DJEN; usada no cadastro, na prévia e na tela completa
+  // Ex.: "Intimação, disponibilizada em 09/10/2026 e publicada em 13/10/2026 (fonte: DJEN) · ver documento"
+  const renderPublicacao = (dados: Pick<ConsultaDatajud,
+    "data_publicacao" | "data_disponibilizacao" | "tipo_publicacao" | "fonte_publicacao" | "link_publicacao" | "hash_publicacao">) => {
+    if (!dados.data_publicacao) return null;
+    return (
+      <>
+        {dados.tipo_publicacao && `${dados.tipo_publicacao}, `}
+        {dados.data_disponibilizacao && `disponibilizada em ${formatarData(dados.data_disponibilizacao)} e `}
+        publicada em {formatarData(dados.data_publicacao)}
+        {dados.fonte_publicacao && ` (fonte: ${dados.fonte_publicacao})`}
+        {/* Cada link só aparece se o campo existir; abrem em nova aba */}
+        {dados.link_publicacao && (
+          <> · <a href={dados.link_publicacao} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>ver documento</a></>
+        )}
+        {dados.hash_publicacao && (
+          <> · <a href={`${URL_CERTIDAO_DJEN}/${dados.hash_publicacao}/certidao`} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>certidão (PDF)</a></>
+        )}
+      </>
+    );
+  };
 
   // Usada no cadastro (consulta na hora) e na prévia da piscina (dados salvos)
   const renderCaixaDatajud = (dados: Pick<ConsultaDatajud,
@@ -1345,7 +1382,7 @@ export default function Dashboard() {
                       cursor: somenteDigitos(formProcesso.cnj).length !== 20 || buscandoDatajud ? "not-allowed" : "pointer"
                     }}
                   >
-                    {buscandoDatajud ? "Buscando..." : "Buscar no DataJud"}
+                    {buscandoDatajud ? "Buscando..." : "Buscar processo"}
                   </button>
                 </div>
 
@@ -1354,6 +1391,12 @@ export default function Dashboard() {
                 )}
 
                 {consultaDatajud && renderCaixaDatajud(consultaDatajud)}
+                {/* Fora da caixa porque a prévia também usa a caixa e já mostra a publicação */}
+                {consultaDatajud?.data_publicacao && (
+                  <div style={{ ...styles.textoSecundario, marginTop: "8px", overflowWrap: "anywhere" }}>
+                    Pela publicação: {renderPublicacao(consultaDatajud)}
+                  </div>
+                )}
               </div>
               <div>
                 <label htmlFor="campo-17" style={styles.label}>Título do Processo</label>
@@ -1392,7 +1435,7 @@ export default function Dashboard() {
                   // Só entra processo que o DataJud achou (Spec 001). Mudar o
                   // CNJ apaga a consulta, então trava de novo
                   disabled={clientes.length === 0 || !consultaDatajud}
-                  title={!consultaDatajud ? "Busque o processo no DataJud antes de cadastrar" : undefined}
+                  title={!consultaDatajud ? "Busque o processo antes de cadastrar" : undefined}
                 >
                   Cadastrar Processo
                 </button>
@@ -1445,7 +1488,7 @@ export default function Dashboard() {
                   style={atualizandoDatajud ? { ...styles.btnAcaoBase, opacity: 0.7, cursor: "wait" } : styles.btnAcaoBase}
                 >
                   {atualizandoDatajud && <span className="spinner" aria-hidden="true" />}
-                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar do DataJud" : "Buscar no DataJud"}
+                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
                 </button>
                 {renderStatusDatajud()}
               </div>
@@ -1478,6 +1521,7 @@ export default function Dashboard() {
               {renderDado("Cadastrado em", `${new Date(processo.data_cadastro + "Z").toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} por ${processo.criador?.nome}`)}
               {renderDado("Órgão julgador", processo.orgao_julgador, true)}
               {renderDado("Assuntos", processo.assuntos?.length > 0 ? processo.assuntos.join(", ") : "", true)}
+              {renderDado("Última publicação", renderPublicacao(processo), true)}
             </dl>
           </section>
 
@@ -1572,7 +1616,7 @@ export default function Dashboard() {
               <div style={{ ...styles.estimativa, backgroundColor: corEstimativa.fundo, color: corEstimativa.texto }}>
                 <strong>{estimativaVencida(processo) ? "Prazo estimado venceu em" : "Prazo estimado:"} {formatarData(processo.prazo_estimado)}</strong>
                 <br />
-                Pela publicação de {formatarData(processo.data_publicacao_datajud)} encontrada no DataJud.
+                Pela publicação: {renderPublicacao(processo)}
               </div>
             )}
 
@@ -1599,9 +1643,10 @@ export default function Dashboard() {
                     }}
                   >
                     {atualizandoDatajud && <span className="spinner" aria-hidden="true" />}
-                    {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar dados do DataJud" : "Buscar no DataJud"}
+                    {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
                   </button>
                   {renderStatusDatajud()}
+                  {erroConsultaPrevia && <div role="alert" style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroConsultaPrevia}</div>}
                 </>
               )}
             </div>
@@ -1618,16 +1663,21 @@ export default function Dashboard() {
 
             {!processo.responsavel && estimativaAntiga(processo) && (
               <div style={styles.textoSecundario}>
-                A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.
-                Confira no DJEN se existe publicação mais recente.
+                A estimativa venceu há mais de {DIAS_ALERTA_ESTIMATIVA} dias: sem prazo em aberto.{" "}
+                {processo.link_publicacao || processo.hash_publicacao
+                  ? "Confira nos links acima e no DJEN se existe publicação mais recente."
+                  : "Confira no DJEN se existe publicação mais recente."}
               </div>
             )}
 
             {!processo.responsavel && estimativaVencida(processo) && !estimativaAntiga(processo) && (
               <div style={styles.avisoInline}>
                 {processo.peticao_apos_publicacao
-                  ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida. Confira no DJEN."
-                  : "O prazo desta publicação já venceu. Confira no DJEN se houve resposta ou se existe publicação mais recente."}
+                  ? "O prazo desta publicação já venceu, mas há petição registrada depois dela: pode já ter sido respondida."
+                  : "O prazo desta publicação já venceu."}
+                {processo.link_publicacao || processo.hash_publicacao
+                  ? " Confira nos links acima e no DJEN se houve resposta ou se existe publicação mais recente."
+                  : " Confira no DJEN se houve resposta ou se existe publicação mais recente."}
               </div>
             )}
 
@@ -1644,9 +1694,11 @@ export default function Dashboard() {
                   onChange={e => setDataPublicacaoAssumir(e.target.value)}
                 />
                 <div style={{ ...styles.textoSecundario, fontSize: "13px", marginTop: "6px" }}>
-                  {processo.data_publicacao_datajud
-                    ? "Sugerida pela publicação encontrada no DataJud. Confira no DJEN; se a data certa for outra, troque aqui."
-                    : "Informe a data em que a publicação saiu no Diário (confira no DJEN)."}
+                  {!processo.data_publicacao
+                    ? "Informe a data em que a publicação saiu no Diário (confira no DJEN)."
+                    : processo.link_publicacao || processo.hash_publicacao
+                      ? `Sugerida pela publicação encontrada no ${processo.fonte_publicacao ?? "DataJud"}. Confira nos links acima; se a data certa for outra, troque aqui.`
+                      : `Sugerida pela publicação encontrada no ${processo.fonte_publicacao ?? "DataJud"}. Confira no DJEN; se a data certa for outra, troque aqui.`}
                 </div>
               </div>
             )}
@@ -2174,6 +2226,7 @@ const styles = {
   modalCorpo: { display: "flex", flexDirection: "column" as const, gap: "20px", padding: "22px 28px" },
   modalPe: { display: "flex", flexWrap: "wrap" as const, justifyContent: "flex-end", gap: "10px", padding: "18px 28px", backgroundColor: "#FAF8F3", borderTop: `1px solid ${CORES.linha}` },
   estimativa: { padding: "14px 16px", border: `1px solid ${CORES.linha}`, borderRadius: "8px" },
+  linkPublicacao: { color: "inherit", fontWeight: 600, textDecoration: "underline" },
   secao: { margin: "0 0 6px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.suave },
   rotuloCampo: { display: "block", marginBottom: "6px", fontWeight: 600 },
 

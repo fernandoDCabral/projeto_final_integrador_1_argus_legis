@@ -30,4 +30,8 @@ pergunta o que falta e preenche o modelo.
 | 005 | [Quando e quem enviou a peça](005-quem-enviou-peca.md) | Implementada |
 | 006 | [Endereço do cliente com CEP](006-endereco-com-cep.md) | Implementada |
 | 007 | [Nova identidade visual e calendário de prazos](007-nova-identidade-visual.md) | Implementada |
-| 008 | [Feedback visual na consulta ao DataJud](008-feedback-consulta-datajud.md) | Aprovada |
+| 008 | [CNJ único por escritório](008-cnj-por-escritorio.md) | Implementada |
+| 009 | [Edição de processo presa ao escritório](009-edicao-processo-por-escritorio.md) | Implementada |
+| 010 | [Data de publicação pelo DJEN](010-publicacao-pelo-djen.md) | Implementada |
+| 011 | [DataJud: resposta parcial e timeout](011-datajud-resposta-parcial.md) | Implementada |
+| 012 | [Feedback visual na consulta ao DataJud](012-feedback-consulta-datajud.md) | Implementada |

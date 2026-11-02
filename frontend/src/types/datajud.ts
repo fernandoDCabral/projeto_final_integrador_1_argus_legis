@@ -18,6 +18,12 @@ export interface ConsultaDatajud {
   tipo_processo_sugerido: string | null;
   movimentacoes: MovimentacaoDatajud[];
   data_publicacao: string | null;
+  // Publicação que vale: do DJEN ou do DataJud (Spec 010)
+  data_disponibilizacao: string | null;
+  fonte_publicacao: string | null; // "DJEN" ou "DataJud"
+  tipo_publicacao: string | null;
+  link_publicacao: string | null;
+  hash_publicacao: string | null;
   peticao_apos_publicacao: boolean;
   encerrado_em: string | null; // arquivamento definitivo (Spec 001)
 }

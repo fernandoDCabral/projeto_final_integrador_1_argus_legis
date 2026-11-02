@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
-from sqlalchemy import String, Integer, Boolean, Date, DateTime, ForeignKey, JSON, func
+from sqlalchemy import String, Integer, Boolean, Date, DateTime, ForeignKey, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING, Optional
 from ..database import Base
@@ -14,8 +14,12 @@ if TYPE_CHECKING:
 
 class Processo(Base):
     __tablename__ = "processos"
+    # O CNJ é único dentro de cada escritório, não no sistema todo (Spec 008)
+    __table_args__ = (
+        UniqueConstraint("escritorio_id", "cnj", name="uq_processos_escritorio_cnj"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cnj: Mapped[Optional[str]] = mapped_column(String(30), unique=True, index=True, nullable=True)
+    cnj: Mapped[Optional[str]] = mapped_column(String(30), index=True, nullable=True)
     titulo: Mapped[str] = mapped_column(String(100))
     tribunal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, server_default="TJCE")
     status: Mapped[str] = mapped_column(String(20))
@@ -30,9 +34,17 @@ class Processo(Base):
     assuntos: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
     movimentacoes: Mapped[Optional[list]] = mapped_column(JSON(none_as_null=True), nullable=True)
     datajud_atualizado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Última publicação no Diário achada no DataJud e o vencimento calculado a
-    # partir dela. É só estimativa: o advogado confirma a data ao assumir
-    data_publicacao_datajud: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Última publicação no Diário (DJEN ou DataJud, Spec 010) e o vencimento
+    # calculado a partir dela. É só estimativa: o advogado confirma ao assumir
+    data_publicacao: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Dia em que saiu no diário; a publicação é o dia útil seguinte
+    data_disponibilizacao: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # "DJEN" ou "DataJud". Tipo, link e hash só vêm quando a fonte é o DJEN
+    fonte_publicacao: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    tipo_publicacao: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    link_publicacao: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Com o hash a tela monta o link da certidão de publicação no CNJ
+    hash_publicacao: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     prazo_estimado: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     peticao_apos_publicacao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Data do arquivamento definitivo no DataJud. Preenchida = processo encerrado

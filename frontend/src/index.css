@@ -32,7 +32,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   outline-offset: 2px;
 }
 
-/* Círculo girando de "consultando" (Spec 008). A cor vem do texto do botão. */
+/* Círculo girando de "consultando" (Spec 012). A cor vem do texto do botão. */
 .spinner {
   display: inline-block;
   width: 14px;

@@ -27,6 +27,13 @@ class ConsultaDatajudResponse(BaseModel):
     # Última publicação no Diário (CPC art. 224), já ajustada quando o
     # tribunal só registrou a disponibilização. Nula se não houver nenhuma
     data_publicacao: Optional[date] = None
+    # Dia em que saiu no diário (DJEN ou movimento 1061); nula se só houver o 92
+    data_disponibilizacao: Optional[date] = None
+    # "DJEN" ou "DataJud" (Spec 010). Tipo, link e hash só vêm do DJEN
+    fonte_publicacao: Optional[str] = None
+    tipo_publicacao: Optional[str] = None
+    link_publicacao: Optional[str] = None
+    hash_publicacao: Optional[str] = None
     # Indício (não prova) de que a publicação já foi respondida
     peticao_apos_publicacao: bool = False
     # Data do arquivamento definitivo; nula se o processo não acabou (Spec 001)
