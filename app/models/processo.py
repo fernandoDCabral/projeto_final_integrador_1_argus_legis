@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .usuario import Usuario
     from .prazo import Prazo
     from .documento import Documento
+    from .publicacao import Publicacao
 
 class Processo(Base):
     __tablename__ = "processos"
@@ -67,6 +68,11 @@ class Processo(Base):
     )
     # Apagar o processo apaga as peças junto (Spec 003)
     documentos: Mapped[list["Documento"]] = relationship(
+        back_populates="processo",
+        cascade="all, delete-orphan"
+    )
+    # Comunicações do DJEN guardadas a cada consulta (Spec 014)
+    publicacoes: Mapped[list["Publicacao"]] = relationship(
         back_populates="processo",
         cascade="all, delete-orphan"
     )
