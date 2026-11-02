@@ -7,7 +7,7 @@
   - **prévia da piscina** (a janela do "Assumir"): botão "Buscar processo" / "Atualizar processo" (~linha 1556, `styles.btnMiniNeutro`);
   - **processo completo**: botão "Buscar processo" / "Atualizar processo" no cabeçalho (~linha 1419, `styles.btnAcaoBase`).
 
-  Enquanto a chamada `POST /processos/{id}/datajud` não responde, o botão só fica `disabled` e o texto troca para "Consultando...". O backend espera o DataJud por até 20 s (`TIMEOUT_SEGUNDOS` em `app/service/datajud_service.py`).
+  Enquanto a chamada `POST /processos/{id}/datajud` não responde, o botão só fica `disabled` e o texto troca para "Consultando...". O backend espera o DataJud por até 35 s por tentativa, com teto de 60 s no total (`TIMEOUT_SEGUNDOS` e `TEMPO_MAXIMO_SEGUNDOS` em `app/service/datajud_service.py`, Spec 011).
 - **Problema observado:** não há nenhum movimento na tela durante a espera. O botão parece travado, e o usuário não sabe se deve esperar ou clicar de novo. O frontend não tem nenhuma animação hoje (nenhum `@keyframes`).
 
 ## 2. Objetivo
@@ -32,7 +32,7 @@
 - **Arquivos a alterar/criar:** `frontend/src/index.css` (classe do spinner e regra de movimento reduzido) e `frontend/src/pages/Dashboard.tsx`.
 - **Fora de escopo:**
   - botão "Buscar processo" do cadastro de processo (ADMIN, `buscandoDatajud`, ~linha 1328);
-  - backend (rota, serviço, timeout de 20 s, schemas, migration);
+  - backend (rota, serviço, timeouts, schemas, migration);
   - indicador de carregamento de outras ações (CEP, envio de peça, assumir, listas);
   - o que acontece com os dados depois da consulta.
 - **Restrições (não pode quebrar):** o comportamento de `handleAtualizarDatajud` (atualiza `piscinaProcessos`, `meusProcessos`, a prévia e o processo aberto); o texto das mensagens de erro atuais (padrão "Não foi possível consultar o processo." ou o `detail` do backend), na faixa `aviso` fora da prévia; dentro da prévia só muda o lugar (ver Decisões); os textos dos botões quando não está consultando; o `role="status"` da faixa de prazo (~linha 1427).
