@@ -15,7 +15,9 @@ class Usuario(Base):
     nome: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(100), unique=True)
     senha: Mapped[str] = mapped_column(String(255))
-    oab: Mapped[Optional[str]] = mapped_column(String(20))
+    # OAB em duas partes, no formato do DJEN: "56977" e "CE" (Spec 014)
+    oab_numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    oab_uf: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
     perfil: Mapped[str] = mapped_column(String(20))
 
     #Foreign key
