@@ -27,7 +27,7 @@ TAMANHO_MAXIMO_TIPO = 100
 TAMANHO_MAXIMO_LINK = 500
 
 class DjenIndisponivel(Exception):
-    """A API do DJEN falhou. Diferente de None, que é "não tem publicação" (Spec 012)"""
+    """A API do DJEN falhou. Diferente de None, que é "não tem publicação" (Spec 013)"""
 
 def buscar_ultima_publicacao(digitos: str, db: Session) -> Optional[dict]:
     """
@@ -35,7 +35,7 @@ def buscar_ultima_publicacao(digitos: str, db: Session) -> Optional[dict]:
 
     Devolve {data_disponibilizacao, data_publicacao, tipo, link, hash} ou None
     se não houver publicação. Se a API falhar, levanta DjenIndisponivel
-    (Spec 012). O texto da comunicação não sai daqui: tem dado pessoal das
+    (Spec 013). O texto da comunicação não sai daqui: tem dado pessoal das
     partes (LGPD) e o link já leva ao documento.
     """
     url = f"{URL_DJEN}?numeroProcesso={digitos}"
