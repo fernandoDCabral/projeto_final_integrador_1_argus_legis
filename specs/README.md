@@ -36,4 +36,4 @@ pergunta o que falta e preenche o modelo.
 | 011 | [DataJud: resposta parcial e timeout](011-datajud-resposta-parcial.md) | Implementada |
 | 012 | [Feedback visual na consulta ao DataJud](012-feedback-consulta-datajud.md) | Implementada |
 | 013 | [Atualizar todos pelo DJEN](013-atualizar-todos-pelo-djen.md) | Implementada |
-| 014 | [Publicações do DJEN no processo](014-publicacoes-djen.md) | Aprovada |
+| 014 | [Publicações do DJEN no processo](014-publicacoes-djen.md) | Implementada |
