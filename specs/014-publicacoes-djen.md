@@ -1,5 +1,5 @@
 # Spec 014: Publicações do DJEN no processo
-**Status:** Aprovada   **Data:** 2026-11-02
+**Status:** Implementada   **Data:** 2026-11-02
 **Relacionadas:** Spec 010 (data de publicação pelo DJEN), Spec 013 (atualizar todos pelo DJEN e prazo "A conferir") · `MELHORIAS.md` item 13 (falta a entidade de movimentação/publicação)
 
 ## 1. Contexto
