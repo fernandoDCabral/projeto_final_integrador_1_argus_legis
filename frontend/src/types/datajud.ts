@@ -30,3 +30,16 @@ export interface ConsultaDatajud {
 
 // Resposta de POST /processos/{id}/djen (Spec 013): o processo vem junto, já atualizado
 export type ResultadoDjen = "nova_publicacao" | "sem_novidade" | "pulado" | "erro";
+
+// Publicação do DJEN guardada para o processo (Spec 014), da mais nova para a mais antiga
+export interface Publicacao {
+  id: number;
+  data_disponibilizacao: string;
+  data_publicacao: string;
+  tipo: string | null;
+  orgao: string | null;
+  link: string | null;
+  oabs: string[];
+  // true quando a OAB do usuário logado está entre as destinatárias
+  para_mim: boolean;
+}
