@@ -253,20 +253,40 @@ def atualizar_dados_datajud(
     processo.assuntos = consulta.assuntos
     processo.movimentacoes = [m.model_dump(mode="json") for m in consulta.movimentacoes]
     processo.datajud_atualizado_em = consulta.atualizado_em
-    processo.data_publicacao = consulta.data_publicacao
-    processo.data_disponibilizacao = consulta.data_disponibilizacao
-    processo.fonte_publicacao = consulta.fonte_publicacao
-    processo.tipo_publicacao = consulta.tipo_publicacao
-    processo.link_publicacao = consulta.link_publicacao
-    processo.hash_publicacao = consulta.hash_publicacao
-    processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
+
+    # DJEN fora: mantém a publicação do DJEN já gravada, a não ser que o
+    # DataJud traga uma mais nova. O DataJud chega com atraso e trocaria a
+    # publicação certa por uma mais velha ou por nada (Spec 015)
+    manter = (
+        not dados_consulta["djen_respondeu"]
+        and processo.fonte_publicacao == "DJEN"
+        and processo.data_publicacao
+        and (consulta.data_publicacao is None
+             or consulta.data_publicacao <= processo.data_publicacao)
+    )
+    if manter:
+        # Mesma conta da rota /djen, com as movimentações novas do DataJud
+        processo.peticao_apos_publicacao = processo.data_disponibilizacao is not None and any(
+            mov.codigo == CODIGO_PETICAO and mov.data > processo.data_disponibilizacao
+            for mov in consulta.movimentacoes
+        )
+    else:
+        processo.data_publicacao = consulta.data_publicacao
+        processo.data_disponibilizacao = consulta.data_disponibilizacao
+        processo.fonte_publicacao = consulta.fonte_publicacao
+        processo.tipo_publicacao = consulta.tipo_publicacao
+        processo.link_publicacao = consulta.link_publicacao
+        processo.hash_publicacao = consulta.hash_publicacao
+        processo.peticao_apos_publicacao = consulta.peticao_apos_publicacao
+
     # Pode encerrar ou voltar a ficar ativo, se o processo foi reativado
     processo.encerrado_em = consulta.encerrado_em
     processo.status = "Encerrado" if consulta.encerrado_em else "Ativo"
+    # Usa a publicação do processo, mantida ou nova (Spec 015)
     processo.prazo_estimado = None
-    if consulta.data_publicacao and not consulta.encerrado_em:
+    if processo.data_publicacao and not consulta.encerrado_em:
         processo.prazo_estimado = prazo_service.calcular_data_vencimento(
-            db, consulta.data_publicacao, processo.tipo_processo)
+            db, processo.data_publicacao, processo.tipo_processo)
 
     # Mesma regra do "Atualizar todos" (Spec 013): só marca a consulta se o
     # DJEN respondeu, e publicação nova num assumido vira prazo "A conferir"
