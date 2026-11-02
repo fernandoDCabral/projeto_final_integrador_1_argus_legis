@@ -37,3 +37,4 @@ pergunta o que falta e preenche o modelo.
 | 012 | [Feedback visual na consulta ao DataJud](012-feedback-consulta-datajud.md) | Implementada |
 | 013 | [Atualizar todos pelo DJEN](013-atualizar-todos-pelo-djen.md) | Implementada |
 | 014 | [Publicações do DJEN no processo](014-publicacoes-djen.md) | Implementada |
+| 015 | [Manter a publicação do DJEN quando o DJEN está fora](015-publicacao-djen-fora.md) | Implementada |
