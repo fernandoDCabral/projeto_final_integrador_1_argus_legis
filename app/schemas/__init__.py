@@ -12,5 +12,6 @@ from .recuperacao import (
 )
 from .datajud import MovimentacaoDatajud, ConsultaDatajudResponse
 from .documento import DocumentoResponse
+from .publicacao import PublicacaoResponse
 from .cep import ConsultaCepResponse
 from .processo import ProcessoBase,ProcessoCreate,ProcessoUpdate,ProcessoResponse,AtualizacaoDjenResponse

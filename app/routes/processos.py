@@ -272,6 +272,8 @@ def atualizar_dados_datajud(
     # DJEN respondeu, e publicação nova num assumido vira prazo "A conferir"
     if dados_consulta["djen_respondeu"]:
         processo.djen_consultado_em = datetime.now(timezone.utc)
+    # Guarda as comunicações novas antes do prazo, que olha para elas (Spec 014)
+    djen_service.gravar_publicacoes(db, processo, dados_consulta["publicacoes"])
     prazo_service.criar_prazo_a_conferir(db, processo)
 
     db.commit()
@@ -322,7 +324,8 @@ def atualizar_pelo_djen(
 
     digitos = re.sub(r"\D", "", processo.cnj)
     try:
-        djen = djen_service.buscar_ultima_publicacao(digitos, db)
+        publicacoes = djen_service.buscar_publicacoes(digitos, db)
+        djen = djen_service.buscar_ultima_publicacao(digitos, db, publicacoes)
     except djen_service.DjenIndisponivel:
         # Nada é gravado, nem a hora da consulta, para o "Tentar de novo"
         return {"resultado": "erro", "processo": processo}
@@ -349,6 +352,8 @@ def atualizar_pelo_djen(
         resultado = "nova_publicacao"
 
     processo.djen_consultado_em = agora
+    # Guarda as comunicações novas antes do prazo, que olha para elas (Spec 014)
+    djen_service.gravar_publicacoes(db, processo, publicacoes)
     # Num assumido, publicação mais nova que o último prazo vira "A conferir".
     # Se nasceu prazo, a tela precisa destacar o processo, mesmo sem data nova
     if prazo_service.criar_prazo_a_conferir(db, processo):
@@ -401,4 +406,45 @@ def listar_prazos_por_processos(
         processo_id, current_user.id, current_user.escritorio_id, db)
     return db.query(models.Prazo).filter(
         models.Prazo.processo_id == processo_id).all()
-    
+
+@router.get(
+    "/{processo_id}/publicacoes",
+    response_model=List[schemas.PublicacaoResponse]
+)
+def listar_publicacoes(
+    processo_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
+):
+    """
+    Comunicações do DJEN guardadas para o processo, da mais nova para a mais
+    antiga (aba DJEN, Spec 014). Lê só do banco, não chama o DJEN.
+    """
+    verificar_acesso_ao_processo(
+        processo_id, current_user.id, current_user.escritorio_id, db)
+    publicacoes = db.query(models.Publicacao).filter(
+        models.Publicacao.processo_id == processo_id
+    ).order_by(
+        models.Publicacao.data_disponibilizacao.desc(),
+        models.Publicacao.id.desc()
+    ).all()
+
+    # para_mim: a OAB de quem está logado é uma das destinatárias.
+    # Sem OAB, nenhuma é "sua"
+    minha_oab = None
+    if current_user.oab_numero:
+        minha_oab = f"{current_user.oab_numero}/{current_user.oab_uf}"
+
+    resposta = []
+    for publicacao in publicacoes:
+        resposta.append({
+            "id": publicacao.id,
+            "data_disponibilizacao": publicacao.data_disponibilizacao,
+            "data_publicacao": publicacao.data_publicacao,
+            "tipo": publicacao.tipo,
+            "orgao": publicacao.orgao,
+            "link": publicacao.link,
+            "oabs": publicacao.oabs,
+            "para_mim": minha_oab is not None and minha_oab in publicacao.oabs,
+        })
+    return resposta

@@ -34,6 +34,8 @@ def registrar_escritorio(
             "id": admin.id,
             "email": admin.email,
             "nome": admin.nome,
-            "perfil": admin.perfil
+            "perfil": admin.perfil,
+            "oab_numero": admin.oab_numero,
+            "oab_uf": admin.oab_uf
         }
     }

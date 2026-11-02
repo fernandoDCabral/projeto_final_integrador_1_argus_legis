@@ -139,24 +139,44 @@ def criar_prazo_a_conferir(db: Session, processo: Processo):
     do processo for mais nova que a do prazo mais recente dele, de qualquer
     situação: assim um prazo descartado não volta na próxima atualização.
     Não faz commit; quem chama grava junto com o processo.
+
+    Se o responsável tem OAB e a publicação veio do DJEN, só conta
+    publicação dirigida à OAB dele: a intimação da outra parte não abre
+    prazo para ele (Spec 014). Sem OAB, ou vindo do DataJud (que não diz o
+    destinatário), vale a publicação do processo, como antes.
     """
     if processo.responsavel_id is None or processo.encerrado_em or not processo.data_publicacao:
         return None
 
+    data_base = processo.data_publicacao
+    tipo_base = processo.tipo_publicacao
+    responsavel = processo.responsavel
+    if responsavel.oab_numero and processo.fonte_publicacao == "DJEN":
+        minha_oab = f"{responsavel.oab_numero}/{responsavel.oab_uf}"
+        minhas = [
+            p for p in processo.publicacoes
+            if minha_oab in p.oabs and (p.tipo or "").lower() != "distribuição"
+        ]
+        if not minhas:
+            return None
+        ultima = max(minhas, key=lambda p: p.data_publicacao)
+        data_base = ultima.data_publicacao
+        tipo_base = ultima.tipo
+
     datas = [p.data_publicacao for p in processo.prazos if p.data_publicacao]
-    if datas and processo.data_publicacao <= max(datas):
+    if datas and data_base <= max(datas):
         return None
 
-    descricao = f"Publicação de {processo.data_publicacao.strftime('%d/%m/%Y')}"
-    if processo.tipo_publicacao:
-        descricao += f" ({processo.tipo_publicacao})"
+    descricao = f"Publicação de {data_base.strftime('%d/%m/%Y')}"
+    if tipo_base:
+        descricao += f" ({tipo_base})"
 
     dias = buscar_prazo_por_tipo(processo.tipo_processo)
     novo_prazo = Prazo(
         descricao=descricao,
-        data_publicacao=processo.data_publicacao,
+        data_publicacao=data_base,
         data_vencimento=calcular_data_vencimento(
-            db, processo.data_publicacao, processo.tipo_processo, dias),
+            db, data_base, processo.tipo_processo, dias),
         finalizado=False,
         interno=False,
         situacao="A conferir",

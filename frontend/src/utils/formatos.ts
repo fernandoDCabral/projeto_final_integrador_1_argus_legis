@@ -55,3 +55,9 @@ export const rotuloTipoPessoa = (tipo: string) => {
 // como meia-noite UTC, e no Brasil apareceria o dia anterior
 export const formatarDataSimples = (iso: string) =>
   iso.split('-').reverse().join('/');
+
+// As 27 UFs, mesma lista do backend (app/utils/validators.py). Usada no seletor da OAB (Spec 014)
+export const UFS = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA',
+  'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+];

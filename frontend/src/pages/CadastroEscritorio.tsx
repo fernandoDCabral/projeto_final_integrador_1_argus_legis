@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { UFS } from '../utils/formatos';
 
 interface Props {
   onVoltarParaLogin: () => void;
@@ -24,7 +25,8 @@ export default function CadastroEscritorio({ onVoltarParaLogin }: Props) {
     cnpj: '',
     admin_nome: '',
     admin_email: '',
-    admin_oab: '',
+    admin_oab_numero: '',
+    admin_oab_uf: '',
     admin_senha: '',
   });
   const [confirmacaoSenha, setConfirmacaoSenha] = useState('');
@@ -52,7 +54,9 @@ export default function CadastroEscritorio({ onVoltarParaLogin }: Props) {
       await registrarEscritorio({
         ...form,
         cnpj: form.cnpj.replace(/\D/g, ''),
-        admin_oab: form.admin_oab.trim() || null,
+        // OAB opcional: vazio vai como null; só um dos dois o backend recusa (Spec 014)
+        admin_oab_numero: form.admin_oab_numero || null,
+        admin_oab_uf: form.admin_oab_uf || null,
       });
       // Em caso de sucesso o AuthContext já autentica e o App troca de tela
     } catch (error: any) {
@@ -134,15 +138,32 @@ export default function CadastroEscritorio({ onVoltarParaLogin }: Props) {
             />
           </div>
 
-          <div style={fieldStyle}>
-            <label htmlFor="campo-5" style={labelStyle}>OAB (opcional)</label>
-            <input id="campo-5"
-              type="text"
-              style={inputStyle}
-              placeholder="Ex: 123456/CE"
-              value={form.admin_oab}
-              onChange={(e) => atualizar('admin_oab', e.target.value)}
-            />
+          {/* OAB em número e UF, como o DJEN manda (Spec 014) */}
+          {/* flex-end: se o rótulo do número quebrar em duas linhas, os campos continuam alinhados */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+            <div style={{ ...fieldStyle, flex: 1 }}>
+              <label htmlFor="campo-5" style={labelStyle}>Número da OAB (opcional)</label>
+              <input id="campo-5"
+                type="text"
+                inputMode="numeric"
+                style={inputStyle}
+                placeholder="Ex: 123456"
+                value={form.admin_oab_numero}
+                onChange={(e) => atualizar('admin_oab_numero', e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+            <div style={{ ...fieldStyle, width: '96px' }}>
+              <label htmlFor="campo-5-uf" style={labelStyle}>UF</label>
+              {/* O select nativo ignora o minHeight: a altura fixa iguala ao campo do número */}
+              <select id="campo-5-uf"
+                style={{ ...inputStyle, height: '46px' }}
+                value={form.admin_oab_uf}
+                onChange={(e) => atualizar('admin_oab_uf', e.target.value)}
+              >
+                <option value="">—</option>
+                {UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+              </select>
+            </div>
           </div>
 
           <div style={fieldStyle}>
