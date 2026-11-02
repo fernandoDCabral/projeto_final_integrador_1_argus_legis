@@ -220,6 +220,15 @@ export default function Dashboard() {
   // Ref e não estado: o laço precisa ver na hora que a janela foi fechada
   const pararDjenRef = useRef(false);
 
+  // A resposta do "Atualizar processo" chega depois: estas refs dizem qual janela
+  // está aberta agora, e não no clique (issues #102 e #103)
+  const processoEmPreviaRef = useRef<any | null>(null);
+  processoEmPreviaRef.current = processoEmPrevia;
+  const processoAbertoRef = useRef<any | null>(null);
+  processoAbertoRef.current = processoAberto;
+  const abaMovimentacoesRef = useRef(abaMovimentacoes);
+  abaMovimentacoesRef.current = abaMovimentacoes;
+
   // Prazo "A conferir" no cartão Prazos: dias digitados por prazo (id → texto do campo)
   const [diasDigitados, setDiasDigitados] = useState<{ [prazoId: number]: string }>({});
   const [salvandoPrazo, setSalvandoPrazo] = useState(false);
@@ -360,14 +369,18 @@ export default function Dashboard() {
       const { data } = await api.post(`/processos/${processo.id}/datajud`);
       setPiscinaProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
       setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
-      if (processoEmPrevia) abrirPrevia(data);
-      if (processoAberto) setProcessoAberto(data);
-      // A consulta grava as publicações novas do DJEN: a aba aberta mostra na hora
-      if (processoAberto && abaMovimentacoes === "djen") carregarPublicacoes(data.id);
+      // Só atualiza a janela se ela ainda estiver aberta no mesmo processo;
+      // se foi fechada no meio da consulta, continua fechada
+      if (processoEmPreviaRef.current?.id === data.id) abrirPrevia(data);
+      if (processoAbertoRef.current?.id === data.id) {
+        setProcessoAberto(data);
+        // A consulta grava as publicações novas do DJEN: a aba aberta mostra na hora
+        if (abaMovimentacoesRef.current === "djen") carregarPublicacoes(data.id);
+      }
     } catch (error) {
       const texto = mensagemDeErro(error, "Não foi possível consultar o processo.");
       // No modal o aviso geral ficaria escondido atrás do overlay
-      if (processoEmPrevia) setErroConsultaPrevia(texto);
+      if (processoEmPreviaRef.current?.id === processo.id) setErroConsultaPrevia(texto);
       else setAviso({ tipo: "erro", texto });
     } finally {
       setAtualizandoDatajud(false);
