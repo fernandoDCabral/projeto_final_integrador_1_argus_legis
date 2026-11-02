@@ -26,13 +26,17 @@ ESPERA_MAXIMA_429 = 5
 TAMANHO_MAXIMO_TIPO = 100
 TAMANHO_MAXIMO_LINK = 500
 
+class DjenIndisponivel(Exception):
+    """A API do DJEN falhou. Diferente de None, que é "não tem publicação" (Spec 013)"""
+
 def buscar_ultima_publicacao(digitos: str, db: Session) -> Optional[dict]:
     """
     Última comunicação do processo no DJEN que conta como publicação.
 
     Devolve {data_disponibilizacao, data_publicacao, tipo, link, hash} ou None
-    se não achar nada ou se a API falhar. O texto da comunicação não sai
-    daqui: tem dado pessoal das partes (LGPD) e o link já leva ao documento.
+    se não houver publicação. Se a API falhar, levanta DjenIndisponivel
+    (Spec 013). O texto da comunicação não sai daqui: tem dado pessoal das
+    partes (LGPD) e o link já leva ao documento.
     """
     url = f"{URL_DJEN}?numeroProcesso={digitos}"
 
@@ -43,20 +47,17 @@ def buscar_ultima_publicacao(digitos: str, db: Session) -> Optional[dict]:
                 dados = json.load(resposta)
             break
         except urllib.error.HTTPError as erro:
-            # 429: espera o que a API pedir (no máximo 5 s) e tenta só mais uma vez
+            # 429: espera e tenta só mais uma vez. O Retry-After do DJEN não é
+            # confiável (vem 0, negativo ou curto demais); espera sempre o máximo
             if erro.code == 429 and tentativa == 1:
-                try:
-                    espera = min(int(erro.headers.get("Retry-After", 4)), ESPERA_MAXIMA_429)
-                except ValueError:
-                    espera = ESPERA_MAXIMA_429
-                logger.warning("DJEN respondeu 429; tentando de novo em %s s", espera)
-                time.sleep(espera)
+                logger.warning("DJEN respondeu 429; tentando de novo em %s s", ESPERA_MAXIMA_429)
+                time.sleep(ESPERA_MAXIMA_429)
                 continue
             logger.warning("DJEN respondeu %s para o processo %s", erro.code, digitos)
-            return None
+            raise DjenIndisponivel()
         except (urllib.error.URLError, TimeoutError, ValueError) as erro:
             logger.warning("Falha ao consultar o DJEN para o processo %s: %s", digitos, erro)
-            return None
+            raise DjenIndisponivel()
 
     try:
         itens = dados["items"]
@@ -72,7 +73,7 @@ def buscar_ultima_publicacao(digitos: str, db: Session) -> Optional[dict]:
         disponibilizacao = date.fromisoformat(ultima["data_disponibilizacao"])
     except (KeyError, TypeError, ValueError) as erro:
         logger.warning("Resposta inesperada do DJEN para o processo %s: %s", digitos, erro)
-        return None
+        raise DjenIndisponivel()
 
     link = ultima.get("link")
     if link and len(link) > TAMANHO_MAXIMO_LINK:

@@ -2,11 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List
+from datetime import date, datetime, timedelta, timezone
 import re
 from app.api.deps import get_current_user, VerificadorPerfil
 from app import models, schemas, database
-from app.service import prazo_service, datajud_service
+from app.service import prazo_service, datajud_service, djen_service
 from app.utils.autorizacao import verificar_acesso_ao_processo
+
+# "Atualizar todos" pula quem foi consultado no DJEN há menos que isso (Spec 013)
+MINUTOS_PARA_PULAR = 60
+# Movimento Petição no DataJud (mesmo código do datajud_service)
+CODIGO_PETICAO = 85
 
 router = APIRouter(
     prefix="/processos",
@@ -237,8 +243,8 @@ def atualizar_dados_datajud(
             detail="Processo sem número CNJ não pode ser consultado no DataJud."
         )
 
-    consulta = schemas.ConsultaDatajudResponse(
-        **datajud_service.consultar_processo(processo.cnj, db))
+    dados_consulta = datajud_service.consultar_processo(processo.cnj, db)
+    consulta = schemas.ConsultaDatajudResponse(**dados_consulta)
 
     processo.classe = consulta.classe
     processo.orgao_julgador = consulta.orgao_julgador
@@ -262,9 +268,95 @@ def atualizar_dados_datajud(
         processo.prazo_estimado = prazo_service.calcular_data_vencimento(
             db, consulta.data_publicacao, processo.tipo_processo)
 
+    # Mesma regra do "Atualizar todos" (Spec 013): só marca a consulta se o
+    # DJEN respondeu, e publicação nova num assumido vira prazo "A conferir"
+    if dados_consulta["djen_respondeu"]:
+        processo.djen_consultado_em = datetime.now(timezone.utc)
+    prazo_service.criar_prazo_a_conferir(db, processo)
+
     db.commit()
     db.refresh(processo)
     return processo
+
+@router.post("/{processo_id}/djen", response_model=schemas.AtualizacaoDjenResponse)
+def atualizar_pelo_djen(
+    processo_id: int,
+    forcar: bool = False,
+    db: Session = Depends(database.get_db),
+    current_user: models.Usuario = Depends(get_current_user)
+):
+    """
+    Consulta só o DJEN de um processo (botão "Atualizar todos", Spec 013).
+
+    A tela chama um processo por vez. Falha do DJEN não vira erro HTTP: volta
+    200 com resultado "erro" para a tela seguir para o próximo.
+    """
+    # Outro escritório: 404, como em verificar_acesso_ao_processo
+    processo = db.query(models.Processo).filter(
+        models.Processo.id == processo_id,
+        models.Processo.escritorio_id == current_user.escritorio_id
+    ).first()
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado!")
+
+    # O admin atualiza todos do escritório; o advogado, os dele e os da piscina
+    if current_user.perfil != "ADMIN":
+        verificar_acesso_ao_processo(
+            processo_id, current_user.id, current_user.escritorio_id, db)
+
+    if processo.status == "Encerrado":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Processo encerrado não é atualizado pelo DJEN."
+        )
+    if not processo.cnj:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Processo sem número CNJ não pode ser consultado no DJEN."
+        )
+
+    agora = datetime.now(timezone.utc)
+    if (not forcar and processo.djen_consultado_em
+            and agora - processo.djen_consultado_em < timedelta(minutes=MINUTOS_PARA_PULAR)):
+        return {"resultado": "pulado", "processo": processo}
+
+    digitos = re.sub(r"\D", "", processo.cnj)
+    try:
+        djen = djen_service.buscar_ultima_publicacao(digitos, db)
+    except djen_service.DjenIndisponivel:
+        # Nada é gravado, nem a hora da consulta, para o "Tentar de novo"
+        return {"resultado": "erro", "processo": processo}
+
+    resultado = "sem_novidade"
+    # A mesma data que a guardada não é novidade
+    if djen and (processo.data_publicacao is None
+                 or djen["data_publicacao"] > processo.data_publicacao):
+        processo.data_publicacao = djen["data_publicacao"]
+        processo.data_disponibilizacao = djen["data_disponibilizacao"]
+        processo.fonte_publicacao = "DJEN"
+        processo.tipo_publicacao = djen["tipo"]
+        processo.link_publicacao = djen["link"]
+        processo.hash_publicacao = djen["hash"]
+        processo.prazo_estimado = prazo_service.calcular_data_vencimento(
+            db, processo.data_publicacao, processo.tipo_processo)
+        # Indício de resposta: petição já salva depois da disponibilização.
+        # As movimentações ficam no banco como texto (JSON)
+        processo.peticao_apos_publicacao = any(
+            mov.get("codigo") == CODIGO_PETICAO
+            and date.fromisoformat(mov["data"]) > processo.data_disponibilizacao
+            for mov in (processo.movimentacoes or [])
+        )
+        resultado = "nova_publicacao"
+
+    processo.djen_consultado_em = agora
+    # Num assumido, publicação mais nova que o último prazo vira "A conferir".
+    # Se nasceu prazo, a tela precisa destacar o processo, mesmo sem data nova
+    if prazo_service.criar_prazo_a_conferir(db, processo):
+        resultado = "nova_publicacao"
+
+    db.commit()
+    db.refresh(processo)
+    return {"resultado": resultado, "processo": processo}
 
 @router.delete("/{processo_id}")
 def excluir_processo(

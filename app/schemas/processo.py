@@ -68,4 +68,12 @@ class ProcessoResponse(ProcessoBase):
     criador: UsuarioResponse
     prazos: List[PrazoResponse]
     prazo_estimado: Optional[date] = None
+    # Última consulta do Argus ao DJEN; serve para pular quem foi
+    # atualizado há menos de 1 hora no "Atualizar todos" (Spec 013)
+    djen_consultado_em: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
+
+class AtualizacaoDjenResponse(BaseModel):
+    # "nova_publicacao", "sem_novidade", "pulado" ou "erro" (Spec 013)
+    resultado: str
+    processo: ProcessoResponse

@@ -90,8 +90,12 @@ def _contar_dias_corridos(db: Session, data_inicio: date, dias: int) -> date:
 def proximo_dia_util(db: Session, data: date) -> date:
     return _contar_dias_uteis(db, data, 1)
 
-def calcular_data_vencimento(db: Session, data_publicacao: date, tipo_processo: str) -> date:
-    dias = buscar_prazo_por_tipo(tipo_processo)
+def calcular_data_vencimento(db: Session, data_publicacao: date, tipo_processo: str,
+                             dias: int | None = None) -> date:
+    # Sem dias informados, vale o padrão do tipo. O advogado pode ajustar os
+    # dias de um prazo "A conferir" (Spec 013); no Criminal continuam corridos
+    if dias is None:
+        dias = buscar_prazo_por_tipo(tipo_processo)
     if tipo_processo.lower() == "criminal":
         return _contar_dias_corridos(db, data_publicacao, dias)
     return _contar_dias_uteis(db, data_publicacao, dias)
@@ -128,13 +132,65 @@ def criar_prazo(db: Session, prazo_data: PrazoCreate):
 
     return novo_prazo
 
+def criar_prazo_a_conferir(db: Session, processo: Processo):
+    """
+    Publicação nova num processo assumido vira um prazo "A conferir", que o
+    advogado confirma, ajusta ou descarta (Spec 013). Só cria se a publicação
+    do processo for mais nova que a do prazo mais recente dele, de qualquer
+    situação: assim um prazo descartado não volta na próxima atualização.
+    Não faz commit; quem chama grava junto com o processo.
+    """
+    if processo.responsavel_id is None or processo.encerrado_em or not processo.data_publicacao:
+        return None
+
+    datas = [p.data_publicacao for p in processo.prazos if p.data_publicacao]
+    if datas and processo.data_publicacao <= max(datas):
+        return None
+
+    descricao = f"Publicação de {processo.data_publicacao.strftime('%d/%m/%Y')}"
+    if processo.tipo_publicacao:
+        descricao += f" ({processo.tipo_publicacao})"
+
+    dias = buscar_prazo_por_tipo(processo.tipo_processo)
+    novo_prazo = Prazo(
+        descricao=descricao,
+        data_publicacao=processo.data_publicacao,
+        data_vencimento=calcular_data_vencimento(
+            db, processo.data_publicacao, processo.tipo_processo, dias),
+        finalizado=False,
+        interno=False,
+        situacao="A conferir",
+        dias=dias,
+        processo_id=processo.id
+    )
+    db.add(novo_prazo)
+    return novo_prazo
+
 def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
+    # Descartado sai do Painel e do Calendário pelo finalizado (Spec 013)
+    if dados_dict.get("situacao") == "Descartado":
+        dados_dict["finalizado"] = True
+
+    # A coluna não aceita vazio; os dias, se vierem, precisam de um número
+    if "situacao" in dados_dict and dados_dict["situacao"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe a situação do prazo."
+        )
+    if "dias" in dados_dict and dados_dict["dias"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe a quantidade de dias do prazo."
+        )
+
     # Trocar a data da publicação recalcula o vencimento. Apagar a data não
     # pode: sem publicação não há de onde contar (Spec 002)
-    if "data_publicacao" in dados_dict:
-        if dados_dict["data_publicacao"] is None:
+    # Trocar os dias também recalcula, a partir da mesma publicação (Spec 013)
+    if "data_publicacao" in dados_dict or "dias" in dados_dict:
+        data_publicacao = dados_dict.get("data_publicacao", prazo.data_publicacao)
+        if data_publicacao is None:
             raise HTTPException(
                 status_code=400,
                 detail="O prazo precisa da data da publicação."
@@ -151,8 +207,9 @@ def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
 
         dados_dict["data_vencimento"] = calcular_data_vencimento(
             db=db,
-            data_publicacao=dados_dict["data_publicacao"],
-            tipo_processo=processo.tipo_processo
+            data_publicacao=data_publicacao,
+            tipo_processo=processo.tipo_processo,
+            dias=dados_dict.get("dias", prazo.dias)
         )
         dados_dict["interno"] = False
 

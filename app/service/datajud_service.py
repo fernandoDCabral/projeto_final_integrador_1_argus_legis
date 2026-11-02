@@ -304,9 +304,14 @@ def consultar_processo(cnj: str, db: Session) -> dict:
 
     # O DJEN sai antes do DataJud, que recebe os dados com atraso. A
     # publicação dele vale se for igual ou mais recente; no empate fica o
-    # DJEN porque traz tipo e link (Spec 010). Se o DJEN falhar, vem None e
-    # segue só com o DataJud
-    djen = djen_service.buscar_ultima_publicacao(digitos, db)
+    # DJEN porque traz tipo e link (Spec 010). Se o DJEN falhar, segue só com
+    # o DataJud; djen_respondeu avisa a rota se pode gravar a consulta (Spec 013)
+    djen_respondeu = True
+    try:
+        djen = djen_service.buscar_ultima_publicacao(digitos, db)
+    except djen_service.DjenIndisponivel:
+        djen = None
+        djen_respondeu = False
     if djen and (data_publicacao is None or djen["data_publicacao"] >= data_publicacao):
         data_publicacao = djen["data_publicacao"]
         data_disponibilizacao = djen["data_disponibilizacao"]
@@ -367,4 +372,6 @@ def consultar_processo(cnj: str, db: Session) -> dict:
         "hash_publicacao": hash_publicacao,
         "peticao_apos_publicacao": peticao_apos_publicacao,
         "encerrado_em": encerrado_em,
+        # Não vai para a tela: o schema da consulta ignora este campo
+        "djen_respondeu": djen_respondeu,
     }
