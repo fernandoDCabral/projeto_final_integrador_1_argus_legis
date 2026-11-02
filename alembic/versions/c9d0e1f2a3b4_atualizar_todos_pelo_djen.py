@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Quando o Argus consultou o DJEN pela última vez (Spec 012), para pular
+    # Quando o Argus consultou o DJEN pela última vez (Spec 013), para pular
     # quem foi atualizado há menos de 1 hora
     op.add_column('processos', sa.Column('djen_consultado_em', sa.DateTime(timezone=True), nullable=True))
     # "A conferir", "Confirmado" ou "Descartado". Os prazos que já existem
