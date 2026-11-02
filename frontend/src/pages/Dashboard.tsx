@@ -118,7 +118,12 @@ export default function Dashboard() {
   const [processoEmPrevia, setProcessoEmPrevia] = useState<any | null>(null);
   const [dataPublicacaoAssumir, setDataPublicacaoAssumir] = useState("");
   const [atualizandoDatajud, setAtualizandoDatajud] = useState(false);
+  // Vira true se a consulta ao DataJud passar de 5 s (mostra a frase de apoio)
+  const [consultaDemorada, setConsultaDemorada] = useState(false);
+  // Erro de "Assumir": aparece no fim da janela, perto do botão do rodapé
   const [erroPrevia, setErroPrevia] = useState("");
+  // Erro da consulta ao DataJud na prévia: aparece logo abaixo do botão de consultar
+  const [erroConsultaPrevia, setErroConsultaPrevia] = useState("");
 
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
   const [abaAdvogado, setAbaAdvogado] = useState<AbaAdvogado>("painel");
@@ -274,12 +279,25 @@ export default function Dashboard() {
     // Sugere a publicação achada (DJEN ou DataJud); o advogado confere
     setDataPublicacaoAssumir(processo.data_publicacao ?? "");
     setErroPrevia("");
+    setErroConsultaPrevia("");
   };
+
+  // Depois de 5 s de consulta, mostra a frase "está demorando". O cleanup cancela
+  // o timer quando a consulta termina ou o componente sai da tela.
+  useEffect(() => {
+    if (!atualizandoDatajud) return;
+    const timer = setTimeout(() => setConsultaDemorada(true), 5000);
+    return () => {
+      clearTimeout(timer);
+      setConsultaDemorada(false);
+    };
+  }, [atualizandoDatajud]);
 
   // Chamada tanto pelo modal quanto pela tela do processo completo
   const handleAtualizarDatajud = async (processo: any) => {
     setAtualizandoDatajud(true);
     setErroPrevia("");
+    setErroConsultaPrevia("");
     try {
       const { data } = await api.post(`/processos/${processo.id}/datajud`);
       setPiscinaProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
@@ -289,7 +307,7 @@ export default function Dashboard() {
     } catch (error) {
       const texto = mensagemDeErro(error, "Não foi possível consultar o processo.");
       // No modal o aviso geral ficaria escondido atrás do overlay
-      if (processoEmPrevia) setErroPrevia(texto);
+      if (processoEmPrevia) setErroConsultaPrevia(texto);
       else setAviso({ tipo: "erro", texto });
     } finally {
       setAtualizandoDatajud(false);
@@ -689,6 +707,15 @@ export default function Dashboard() {
   };
 
   // --- SUB-COMPONENTES DE RENDERIZAÇÃO ---
+
+  // Região de status sempre renderizada: leitor de tela só anuncia mudança numa região que já existe.
+  // width 0 + minWidth 100%: o texto quebra na largura do botão em vez de alargar o contêiner,
+  // senão a frase longa empurra o botão para outra linha do cabeçalho (flex-wrap)
+  const renderStatusDatajud = () => (
+    <div role="status" style={{ ...styles.textoSecundario, width: 0, minWidth: "100%" }}>
+      {atualizandoDatajud && (consultaDemorada ? "Está demorando mais que o normal. Aguarde." : "Consultando o DataJud...")}
+    </div>
+  );
 
   // Encerrado vem do arquivamento definitivo no DataJud (Spec 001)
   const renderSeloStatus = (processo: any) => (
@@ -1452,9 +1479,19 @@ export default function Dashboard() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-start" }}>
             <button type="button" onClick={() => handleLiberarProcesso(processo.id)} style={styles.btnSecundario}>Liberar para a piscina</button>
             {processo.cnj && (
-              <button type="button" onClick={() => handleAtualizarDatajud(processo)} disabled={atualizandoDatajud} style={styles.btnAcaoBase}>
-                {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
-              </button>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => handleAtualizarDatajud(processo)}
+                  disabled={atualizandoDatajud}
+                  aria-busy={atualizandoDatajud}
+                  style={atualizandoDatajud ? { ...styles.btnAcaoBase, opacity: 0.7, cursor: "wait" } : styles.btnAcaoBase}
+                >
+                  {atualizandoDatajud && <span className="spinner" aria-hidden="true" />}
+                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
+                </button>
+                {renderStatusDatajud()}
+              </div>
             )}
           </div>
         </header>
@@ -1590,13 +1627,27 @@ export default function Dashboard() {
                 <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
               )}
               {processo.cnj && (
-                <button
-                  onClick={() => handleAtualizarDatajud(processo)}
-                  disabled={atualizandoDatajud}
-                  style={{ ...styles.btnMiniNeutro, marginTop: "8px" }}
-                >
-                  {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
-                </button>
+                <>
+                  <button
+                    onClick={() => handleAtualizarDatajud(processo)}
+                    disabled={atualizandoDatajud}
+                    aria-busy={atualizandoDatajud}
+                    style={{
+                      ...styles.btnMiniNeutro,
+                      marginTop: "8px",
+                      // Precisa de flex para alinhar o círculo ao texto
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      ...(atualizandoDatajud ? { opacity: 0.7, cursor: "wait" } : {}),
+                    }}
+                  >
+                    {atualizandoDatajud && <span className="spinner" aria-hidden="true" />}
+                    {atualizandoDatajud ? "Consultando..." : processo.movimentacoes ? "Atualizar processo" : "Buscar processo"}
+                  </button>
+                  {renderStatusDatajud()}
+                  {erroConsultaPrevia && <div role="alert" style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroConsultaPrevia}</div>}
+                </>
               )}
             </div>
 
