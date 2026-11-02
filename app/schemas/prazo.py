@@ -19,7 +19,7 @@ class PrazoResponse(PrazoBase):
     data_vencimento: date
     # True só nos Prazos Iniciais antigos; prazo novo sempre nasce False
     interno: bool
-    # "A conferir", "Confirmado" ou "Descartado" (Spec 012)
+    # "A conferir", "Confirmado" ou "Descartado" (Spec 013)
     situacao: str
     # Nulo nos prazos antigos: a tela mostra o padrão do tipo
     dias: Optional[int] = None
@@ -29,7 +29,7 @@ class PrazoUpdate(BaseModel):
     descricao: Optional[str] = None
     data_publicacao: Optional[date] = None
     finalizado: Optional[bool] = None
-    # Confirmar tira a etiqueta; descartar também finaliza (Spec 012).
+    # Confirmar tira a etiqueta; descartar também finaliza (Spec 013).
     # "A conferir" só o sistema cria, então não é aceito aqui
     situacao: Optional[Literal["Confirmado", "Descartado"]] = None
     # Trocar os dias recalcula o vencimento a partir da publicação
