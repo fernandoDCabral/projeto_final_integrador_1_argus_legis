@@ -1,6 +1,6 @@
-# Spec 012: Atualizar todos pelo DJEN
+# Spec 013: Atualizar todos pelo DJEN
 **Status:** Implementada   **Data:** 2026-11-02
-**Relacionadas:** Issue #99 · Spec 002 (revisão da contagem de prazos), Spec 010 (data de publicação pelo DJEN), Spec 011 (DataJud: resposta parcial e timeout)
+**Relacionadas:** Issue #99 · Spec 002 (revisão da contagem de prazos), Spec 010 (data de publicação pelo DJEN), Spec 011 (DataJud: resposta parcial e timeout) · Spec 012 (feedback visual na consulta; numeração: esta spec nasceu como 012 e virou 013 porque a do feedback entrou antes)
 
 ## 1. Contexto
 - **Como funciona hoje:**
