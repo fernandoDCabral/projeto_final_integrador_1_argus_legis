@@ -76,7 +76,7 @@ const estiloEtiqueta = (tipo: Situacao) => ({
 // Mesma lista fixa do backend (app/routes/documentos.py) — Spec 003
 const TIPOS_DOCUMENTO = ["Petição inicial", "Contestação", "Réplica", "Recurso", "Petição (outras)"];
 
-// Mesmos dias do backend (PRAZOS_POR_TIPO): usados quando o prazo não tem "dias" gravado (Spec 012)
+// Mesmos dias do backend (PRAZOS_POR_TIPO): usados quando o prazo não tem "dias" gravado (Spec 013)
 const DIAS_POR_TIPO: { [tipo: string]: number } = { Civil: 15, Criminal: 10, Trabalhista: 8, Administrativo: 30 };
 
 const FORM_CLIENTE_VAZIO = {
@@ -201,7 +201,7 @@ export default function Dashboard() {
   const [buscandoDatajud, setBuscandoDatajud] = useState(false);
   const [erroDatajud, setErroDatajud] = useState("");
 
-  // "Atualizar todos" pelo DJEN (Spec 012): uma linha por processo; null = janela fechada
+  // "Atualizar todos" pelo DJEN (Spec 013): uma linha por processo; null = janela fechada
   const [linhasDjen, setLinhasDjen] = useState<{ processo: any; resultado: ResultadoDjen | "aguardando" }[] | null>(null);
   const [rodandoDjen, setRodandoDjen] = useState(false);
   const [forcarDjen, setForcarDjen] = useState(false);
@@ -436,7 +436,7 @@ export default function Dashboard() {
     }
   };
 
-  // Prazo "A conferir" (Spec 012). Sem situação: só grava os dias e recalcula o vencimento.
+  // Prazo "A conferir" (Spec 013). Sem situação: só grava os dias e recalcula o vencimento.
   // Confirmar manda os dias junto, para valer o que está no campo
   const handleAtualizarPrazo = async (processo: any, prazo: any, situacao?: "Confirmado" | "Descartado") => {
     const dias = Number(diasDigitados[prazo.id] ?? prazo.dias ?? DIAS_POR_TIPO[processo.tipo_processo]);
@@ -459,7 +459,7 @@ export default function Dashboard() {
     }
   };
 
-  // --- ATUALIZAR TODOS PELO DJEN (Spec 012) ---
+  // --- ATUALIZAR TODOS PELO DJEN (Spec 013) ---
   // Um processo por vez: mostra o progresso e respeita o limite do DJEN (429).
   // Só consulta as linhas "aguardando", assim o "Tentar de novo" reaproveita a lista
   const rodarDjen = async (linhasIniciais: { processo: any; resultado: ResultadoDjen | "aguardando" }[], forcar: boolean) => {
@@ -737,7 +737,7 @@ export default function Dashboard() {
       .filter((prazo: any) => !prazo.finalizado)
       .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento))[0];
 
-  // Publicação nova do DJEN que criou prazo e o advogado ainda não conferiu (Spec 012)
+  // Publicação nova do DJEN que criou prazo e o advogado ainda não conferiu (Spec 013)
   const temPrazoAConferir = (processo: any) =>
     (processo.prazos ?? []).some((prazo: any) => prazo.situacao === "A conferir");
 
@@ -898,7 +898,7 @@ export default function Dashboard() {
 
   // Usada na prévia e na tela do processo completo. Conferir o prazo só no completo
   const renderListaPrazos = (processo: any, completo: boolean) => {
-    // "A conferir" sobe para o topo, em destaque (Spec 012)
+    // "A conferir" sobe para o topo, em destaque (Spec 013)
     const prazos = [...(processo.prazos ?? [])].sort((a: any, b: any) =>
       (b.situacao === "A conferir" ? 1 : 0) - (a.situacao === "A conferir" ? 1 : 0));
     const padraoDias = DIAS_POR_TIPO[processo.tipo_processo];
@@ -1875,7 +1875,7 @@ export default function Dashboard() {
     );
   };
 
-  // Botão "Atualizar todos" e a caixinha "Forçar": Meus processos e Processos do escritório (Spec 012)
+  // Botão "Atualizar todos" e a caixinha "Forçar": Meus processos e Processos do escritório (Spec 013)
   const renderAtualizarTodos = (processos: any[]) => {
     // Só os ativos; encerrado e processo sem CNJ não têm o que buscar no DJEN
     const ativos = processos.filter(p => p.status !== "Encerrado" && p.cnj);
@@ -2545,7 +2545,7 @@ const styles = {
   btnFecharAviso: { minWidth: "44px", minHeight: "44px", backgroundColor: "transparent", border: "none", cursor: "pointer", color: "inherit", fontSize: "16px", lineHeight: 1 },
   linhaCnj: { display: "flex", gap: "8px" },
   btnBuscarDatajud: { minHeight: "44px", padding: "0 12px", backgroundColor: CORES.marca, color: CORES.marcaTexto, border: "none", borderRadius: "6px", fontWeight: 600, whiteSpace: "nowrap" as const },
-  // Atualizar todos pelo DJEN e prazo "A conferir" (Spec 012)
+  // Atualizar todos pelo DJEN e prazo "A conferir" (Spec 013)
   barraFundo: { height: "8px", marginTop: "12px", backgroundColor: CORES.neutro.fundo, borderRadius: "999px", overflow: "hidden" },
   barra: { height: "100%", backgroundColor: CORES.marca, transition: "width 0.3s" },
   caixaConferir: { padding: "14px 16px", backgroundColor: "#FBF3E6", border: `1px solid ${CORES.urgente.bola}`, borderRadius: "8px" },
