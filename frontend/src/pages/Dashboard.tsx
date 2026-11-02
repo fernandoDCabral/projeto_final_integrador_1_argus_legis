@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../services/api";
 import type { Cliente, TipoPessoa } from "../types/cliente";
-import type { ConsultaDatajud, ResultadoDjen } from "../types/datajud";
+import type { ConsultaDatajud, ResultadoDjen, Publicacao } from "../types/datajud";
 import {
   formatarCpf,
   formatarCnpj,
@@ -12,6 +12,7 @@ import {
   rotuloTipoPessoa,
   formatarDataSimples,
   formatarCnj,
+  UFS,
 } from "../utils/formatos";
 
 type AbaAdmin = "cadastro" | "clientes" | "processos";
@@ -120,6 +121,8 @@ export default function Dashboard() {
   // Modal de prévia do processo da piscina
   const [processoEmPrevia, setProcessoEmPrevia] = useState<any | null>(null);
   const [dataPublicacaoAssumir, setDataPublicacaoAssumir] = useState("");
+  // Publicação para a OAB do advogado que deu a data sugerida; null = veio do processo (Spec 014)
+  const [publicacaoSugerida, setPublicacaoSugerida] = useState<Publicacao | null>(null);
   const [atualizandoDatajud, setAtualizandoDatajud] = useState(false);
   // Vira true se a consulta ao DataJud passar de 5 s (mostra a frase de apoio)
   const [consultaDemorada, setConsultaDemorada] = useState(false);
@@ -131,6 +134,13 @@ export default function Dashboard() {
   // Tela "Meus Processos": lista e, ao escolher um, o processo completo
   const [abaAdvogado, setAbaAdvogado] = useState<AbaAdvogado>("painel");
   const [processoAberto, setProcessoAberto] = useState<any | null>(null);
+
+  // Cartão Movimentações do processo completo: aba DataJud ou DJEN (Spec 014).
+  // publicacoes = null enquanto a aba DJEN não foi carregada
+  const [abaMovimentacoes, setAbaMovimentacoes] = useState<"datajud" | "djen">("datajud");
+  const [publicacoes, setPublicacoes] = useState<Publicacao[] | null>(null);
+  const [erroPublicacoes, setErroPublicacoes] = useState("");
+  const [soAsMinhas, setSoAsMinhas] = useState(false);
 
   // Calendário (Painel e item do menu): primeiro dia do mês que está na tela
   const [mesCalendario, setMesCalendario] = useState(() => {
@@ -175,6 +185,8 @@ export default function Dashboard() {
   const [modalAdvogadoAberto, setModalAdvogadoAberto] = useState(false);
   const [modalProcessoAberto, setModalProcessoAberto] = useState(false);
   const [modalClienteAberto, setModalClienteAberto] = useState(false);
+  // Erro do "Novo advogado": fica dentro da janela, porque o aviso do topo ficava atrás do fundo escuro
+  const [erroAdvogado, setErroAdvogado] = useState("");
 
   // Confirmação de exclusão feita na própria linha da tabela, para não
   // depender de window.confirm
@@ -183,7 +195,7 @@ export default function Dashboard() {
 
   // Formulários do Admin
   const [formUsuario, setFormUsuario] = useState({
-    nome: "", email: "", senha: "", oab: ""
+    nome: "", email: "", senha: "", oab_numero: "", oab_uf: ""
   });
   const [formProcesso, setFormProcesso] = useState({
     cnj: "", titulo: "", tribunal: "", tipo_processo: "", cliente_id: ""
@@ -275,6 +287,11 @@ export default function Dashboard() {
     window.scrollTo(0, 0);
     // Erro do cartão Prazos de um processo não pode aparecer em outro
     setErroPrazo("");
+    // Cada processo abre na aba DataJud, sem a lista do DJEN do anterior (Spec 014)
+    setAbaMovimentacoes("datajud");
+    setPublicacoes(null);
+    setErroPublicacoes("");
+    setSoAsMinhas(false);
   }, [abaAdvogado, processoAberto?.id]);
 
   // Carrega as peças do processo aberto (o completo tem prioridade sobre a prévia)
@@ -291,12 +308,36 @@ export default function Dashboard() {
   }, [idProcessoComPecas]);
 
   // --- AÇÕES DO ADVOGADO ---
-  const abrirPrevia = (processo: any) => {
+  const abrirPrevia = async (processo: any) => {
     setProcessoEmPrevia(processo);
     // Sugere a publicação achada (DJEN ou DataJud); o advogado confere
     setDataPublicacaoAssumir(processo.data_publicacao ?? "");
+    setPublicacaoSugerida(null);
     setErroPrevia("");
     setErroConsultaPrevia("");
+    // Se houver publicação guardada para a OAB do advogado, sugere a mais recente
+    // dela (a lista vem da mais nova para a mais antiga). Distribuição não abre prazo (Spec 014)
+    try {
+      const { data } = await api.get<Publicacao[]>(`/processos/${processo.id}/publicacoes`);
+      const minha = data.find(pub => pub.para_mim && (pub.tipo || "").toLowerCase() !== "distribuição");
+      if (minha) {
+        setDataPublicacaoAssumir(minha.data_publicacao);
+        setPublicacaoSugerida(minha);
+      }
+    } catch {
+      // Sem a lista, fica a sugestão de antes
+    }
+  };
+
+  // Aba DJEN do cartão Movimentações: lê o que já está guardado, sem consultar o DJEN (Spec 014)
+  const carregarPublicacoes = async (processoId: number) => {
+    setErroPublicacoes("");
+    try {
+      const { data } = await api.get(`/processos/${processoId}/publicacoes`);
+      setPublicacoes(data);
+    } catch (error) {
+      setErroPublicacoes(mensagemDeErro(error, "Não foi possível carregar as publicações."));
+    }
   };
 
   // Depois de 5 s de consulta, mostra a frase "está demorando". O cleanup cancela
@@ -321,6 +362,8 @@ export default function Dashboard() {
       setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
       if (processoEmPrevia) abrirPrevia(data);
       if (processoAberto) setProcessoAberto(data);
+      // A consulta grava as publicações novas do DJEN: a aba aberta mostra na hora
+      if (processoAberto && abaMovimentacoes === "djen") carregarPublicacoes(data.id);
     } catch (error) {
       const texto = mensagemDeErro(error, "Não foi possível consultar o processo.");
       // No modal o aviso geral ficaria escondido atrás do overlay
@@ -498,24 +541,24 @@ export default function Dashboard() {
   // --- AÇÕES DO ADMIN ---
   const handleCadastrarAdvogado = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErroAdvogado("");
     try {
       await api.post('/usuarios/', {
         nome: formUsuario.nome,
         email: formUsuario.email,
         senha: formUsuario.senha,
-        oab: formUsuario.oab,
+        // OAB opcional (trainee sem OAB); vazio vai como null (Spec 014)
+        oab_numero: formUsuario.oab_numero || null,
+        oab_uf: formUsuario.oab_uf || null,
         perfil: "ADVOGADO"
       });
 
       setAviso({ tipo: "sucesso", texto: "Advogado cadastrado com sucesso!" });
       setModalAdvogadoAberto(false);
-      setFormUsuario({ nome: "", email: "", senha: "", oab: "" });
+      setFormUsuario({ nome: "", email: "", senha: "", oab_numero: "", oab_uf: "" });
       await carregarDados();
     } catch (error) {
-      setAviso({
-        tipo: "erro",
-        texto: mensagemDeErro(error, "Erro ao cadastrar advogado.")
-      });
+      setErroAdvogado(mensagemDeErro(error, "Erro ao cadastrar advogado."));
     }
   };
 
@@ -1091,7 +1134,7 @@ export default function Dashboard() {
                     </div>
                   </td>
                   <td style={styles.td}>{adv.email}</td>
-                  <td style={{ ...styles.td, fontVariantNumeric: "tabular-nums" }}>{adv.oab || "—"}</td>
+                  <td style={{ ...styles.td, fontVariantNumeric: "tabular-nums" }}>{adv.oab_numero ? `${adv.oab_numero}/${adv.oab_uf}` : "—"}</td>
                   <td style={{ ...styles.td, fontVariantNumeric: "tabular-nums" }}>
                     {processosAdmin.filter((p: any) => p.responsavel?.id === adv.id).length}
                   </td>
@@ -1336,16 +1379,28 @@ export default function Dashboard() {
                 <label htmlFor="campo-3" style={styles.label}>Senha de Acesso</label>
                 <input id="campo-3" required style={styles.input} type="password" value={formUsuario.senha} onChange={e => setFormUsuario({...formUsuario, senha: e.target.value})} />
               </div>
-              <div>
-                <label htmlFor="campo-4" style={styles.label}>Número da OAB</label>
-                <input id="campo-4" required style={styles.input} type="text" value={formUsuario.oab} onChange={e => setFormUsuario({...formUsuario, oab: e.target.value})} />
+              {/* OAB opcional, em número (só dígitos) e UF, como o DJEN manda (Spec 014) */}
+              <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <label htmlFor="campo-4" style={styles.label}>Número da OAB (opcional)</label>
+                  <input id="campo-4" style={styles.input} type="text" inputMode="numeric" placeholder="Ex: 123456" value={formUsuario.oab_numero} onChange={e => setFormUsuario({...formUsuario, oab_numero: somenteDigitos(e.target.value)})} />
+                </div>
+                <div style={{ width: "96px" }}>
+                  <label htmlFor="campo-4-uf" style={styles.label}>UF</label>
+                  <select id="campo-4-uf" style={styles.input} value={formUsuario.oab_uf} onChange={e => setFormUsuario({...formUsuario, oab_uf: e.target.value})}>
+                    <option value="">—</option>
+                    {UFS.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                  </select>
+                </div>
               </div>
+              {erroAdvogado && <div role="alert" style={{ ...styles.avisoErro, marginBottom: 0 }}>{erroAdvogado}</div>}
               <div style={styles.linhaBotoes}>
                 <button
                   type="button"
                   onClick={() => {
                     setModalAdvogadoAberto(false);
-                    setFormUsuario({ nome: "", email: "", senha: "", oab: "" });
+                    setFormUsuario({ nome: "", email: "", senha: "", oab_numero: "", oab_uf: "" });
+                    setErroAdvogado("");
                   }}
                   style={styles.btnCancelar}
                 >
@@ -1611,6 +1666,51 @@ export default function Dashboard() {
     </div>
   );
 
+  // Aba DJEN do cartão Movimentações (Spec 014): publicações guardadas, da mais nova para a mais antiga
+  const renderPublicacoesDjen = () => {
+    const temOab = Boolean(user?.oab_numero);
+    const lista = (publicacoes ?? []).filter(pub => !soAsMinhas || pub.para_mim);
+    return (
+      <>
+        {/* Sem OAB não há com o que comparar: a caixa fica travada e diz o porquê */}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", minHeight: "44px", cursor: temOab ? "pointer" : "not-allowed", color: temOab ? CORES.tinta : CORES.suave }}>
+          <input type="checkbox" checked={soAsMinhas} disabled={!temOab} onChange={e => setSoAsMinhas(e.target.checked)} style={{ width: "18px", height: "18px" }} />
+          Só as minhas
+          {!temOab && <span style={{ fontSize: "13px" }}>· Cadastre sua OAB para filtrar</span>}
+        </label>
+        {erroPublicacoes ? (
+          <div role="alert" style={{ ...styles.avisoInline, backgroundColor: CORES.vencido.fundo, color: CORES.vencido.texto, borderColor: "#E3C2BE" }}>{erroPublicacoes}</div>
+        ) : publicacoes === null ? (
+          <div style={styles.textoSecundario}>Carregando publicações...</div>
+        ) : publicacoes.length === 0 ? (
+          <div style={styles.avisoInline}>Nenhuma publicação guardada. Clique em Atualizar processo para buscar no DJEN.</div>
+        ) : lista.length === 0 ? (
+          <div style={styles.textoSecundario}>Nenhuma publicação dirigida à sua OAB.</div>
+        ) : (
+          <ol style={{ ...styles.linhaTempo, marginTop: "12px" }}>
+            {lista.map(pub => (
+              <li key={pub.id} style={styles.itemTempo}>
+                <span style={styles.pontoTempo} aria-hidden="true" />
+                <time style={styles.dataTempo}>{formatarDataSimples(pub.data_disponibilizacao)}</time>
+                {pub.para_mim && <span style={{ ...estiloEtiqueta("emdia"), marginLeft: "8px" }}>sua</span>}
+                <div>
+                  {pub.tipo || "Comunicação"}
+                  {(pub.tipo || "").toLowerCase() === "distribuição" && <span style={styles.textoSecundario}> (não abre prazo)</span>}
+                </div>
+                <div style={{ ...styles.textoSecundario, fontSize: "14px" }}>
+                  {pub.orgao}
+                  {pub.link && (
+                    <>{pub.orgao && " · "}<a href={pub.link} target="_blank" rel="noopener noreferrer" style={styles.linkPublicacao}>ver documento</a></>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </>
+    );
+  };
+
   const renderProcessoCompleto = (processo: any) => {
     const prazo = prazoAberto(processo);
     const infoPrazo = analisarPrazo(prazo?.data_vencimento);
@@ -1702,10 +1802,10 @@ export default function Dashboard() {
             {renderPecas(processo, true)}
           </section>
 
-          <section style={{ ...styles.cartao, gridColumn: "1 / -1" }} aria-label="Movimentações do DataJud">
+          <section style={{ ...styles.cartao, gridColumn: "1 / -1" }} aria-label="Movimentações">
             <div style={styles.cabCartao}>
               <h2 style={styles.tituloCartao}>Movimentações</h2>
-              {processo.movimentacoes && (
+              {abaMovimentacoes === "datajud" && processo.movimentacoes && (
                 <span style={styles.textoSecundario}>
                   Fonte: DataJud/CNJ
                   {processo.datajud_atualizado_em &&
@@ -1713,7 +1813,36 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
-            {processo.movimentacoes ? (
+            {/* Duas abas, cada fonte com o que é dela (Spec 014). A DJEN lê o que está guardado */}
+            <div role="tablist" aria-label="Fonte das movimentações" style={{ ...styles.abasOrdem, display: "inline-flex", marginBottom: "16px" }}>
+              <button
+                type="button"
+                role="tab"
+                id="aba-datajud"
+                aria-selected={abaMovimentacoes === "datajud"}
+                aria-controls="painel-movimentacoes"
+                onClick={() => setAbaMovimentacoes("datajud")}
+                style={abaMovimentacoes === "datajud" ? styles.abaOrdemAtiva : styles.abaOrdem}
+              >
+                DataJud
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="aba-djen"
+                aria-selected={abaMovimentacoes === "djen"}
+                aria-controls="painel-movimentacoes"
+                onClick={() => {
+                  setAbaMovimentacoes("djen");
+                  carregarPublicacoes(processo.id);
+                }}
+                style={abaMovimentacoes === "djen" ? styles.abaOrdemAtiva : styles.abaOrdem}
+              >
+                DJEN
+              </button>
+            </div>
+            <div role="tabpanel" id="painel-movimentacoes" aria-labelledby={abaMovimentacoes === "datajud" ? "aba-datajud" : "aba-djen"}>
+            {abaMovimentacoes === "djen" ? renderPublicacoesDjen() : processo.movimentacoes ? (
               <>
                 {processo.movimentacoes.length > 0 ? (
                   <ol style={styles.linhaTempo}>
@@ -1735,6 +1864,7 @@ export default function Dashboard() {
             ) : (
               <div style={styles.avisoInline}>Este processo ainda não foi consultado no DataJud.</div>
             )}
+            </div>
           </section>
         </div>
       </div>
@@ -1850,7 +1980,10 @@ export default function Dashboard() {
                   onChange={e => setDataPublicacaoAssumir(e.target.value)}
                 />
                 <div style={{ ...styles.textoSecundario, fontSize: "13px", marginTop: "6px" }}>
-                  {!processo.data_publicacao
+                  {/* A frase explica de onde veio a sugestão, mesmo se a data for trocada à mão */}
+                  {publicacaoSugerida
+                    ? `Sugerida pela última publicação para a sua OAB: ${publicacaoSugerida.tipo || "Comunicação"} de ${formatarDataSimples(publicacaoSugerida.data_disponibilizacao)}.`
+                    : !processo.data_publicacao
                     ? "Informe a data em que a publicação saiu no Diário (confira no DJEN)."
                     : processo.link_publicacao || processo.hash_publicacao
                       ? `Sugerida pela publicação encontrada no ${processo.fonte_publicacao ?? "DataJud"}. Confira nos links acima; se a data certa for outra, troque aqui.`
@@ -2356,7 +2489,7 @@ export default function Dashboard() {
           <div style={{ ...styles.usuario, marginTop: "auto" }}>
             <strong>{user?.nome || user?.email || "Usuário"}</strong>
             <small style={{ color: CORES.marcaSuave }}>
-              {user?.perfil === "ADMIN" ? "Administrador" : "Advogado"}{user?.oab ? ` · OAB ${user.oab}` : ""}
+              {user?.perfil === "ADMIN" ? "Administrador" : "Advogado"}{user?.oab_numero ? ` · OAB ${user.oab_numero}/${user.oab_uf}` : ""}
             </small>
             <button type="button" onClick={logout} style={styles.logoutButton}>Sair</button>
           </div>
