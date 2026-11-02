@@ -18,7 +18,7 @@ class Prazo(Base):
     data_vencimento: Mapped[date] = mapped_column(Date)
     finalizado: Mapped[bool] = mapped_column(Boolean, default=False)
     interno: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # "A conferir" (criado sozinho pelo DJEN), "Confirmado" ou "Descartado" (Spec 012)
+    # "A conferir" (criado sozinho pelo DJEN), "Confirmado" ou "Descartado" (Spec 013)
     situacao: Mapped[str] = mapped_column(String(20), default="Confirmado", server_default="Confirmado")
     # Dias do prazo; nulo nos prazos antigos, que usam o padrão do tipo
     dias: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
