@@ -38,7 +38,9 @@ def login(
             "id": user.id,
             "email": user.email,
             "nome": user.nome,
-            "perfil": user.perfil
+            "perfil": user.perfil,
+            "oab_numero": user.oab_numero,
+            "oab_uf": user.oab_uf
         }
     }
 
