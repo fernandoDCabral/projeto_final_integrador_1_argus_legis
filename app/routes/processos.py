@@ -9,7 +9,7 @@ from app import models, schemas, database
 from app.service import prazo_service, datajud_service, djen_service
 from app.utils.autorizacao import verificar_acesso_ao_processo
 
-# "Atualizar todos" pula quem foi consultado no DJEN há menos que isso (Spec 012)
+# "Atualizar todos" pula quem foi consultado no DJEN há menos que isso (Spec 013)
 MINUTOS_PARA_PULAR = 60
 # Movimento Petição no DataJud (mesmo código do datajud_service)
 CODIGO_PETICAO = 85
@@ -268,7 +268,7 @@ def atualizar_dados_datajud(
         processo.prazo_estimado = prazo_service.calcular_data_vencimento(
             db, consulta.data_publicacao, processo.tipo_processo)
 
-    # Mesma regra do "Atualizar todos" (Spec 012): só marca a consulta se o
+    # Mesma regra do "Atualizar todos" (Spec 013): só marca a consulta se o
     # DJEN respondeu, e publicação nova num assumido vira prazo "A conferir"
     if dados_consulta["djen_respondeu"]:
         processo.djen_consultado_em = datetime.now(timezone.utc)
@@ -286,7 +286,7 @@ def atualizar_pelo_djen(
     current_user: models.Usuario = Depends(get_current_user)
 ):
     """
-    Consulta só o DJEN de um processo (botão "Atualizar todos", Spec 012).
+    Consulta só o DJEN de um processo (botão "Atualizar todos", Spec 013).
 
     A tela chama um processo por vez. Falha do DJEN não vira erro HTTP: volta
     200 com resultado "erro" para a tela seguir para o próximo.
