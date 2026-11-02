@@ -48,7 +48,8 @@ def registrar_escritorio(
         nome=dados.admin_nome,
         email=dados.admin_email,
         senha=gerar_hash_senha(dados.admin_senha),
-        oab=dados.admin_oab,
+        oab_numero=dados.admin_oab_numero,
+        oab_uf=dados.admin_oab_uf,
         perfil=PERFIL_ADMIN,
         escritorio_id=escritorio.id
     )
