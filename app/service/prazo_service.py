@@ -93,7 +93,7 @@ def proximo_dia_util(db: Session, data: date) -> date:
 def calcular_data_vencimento(db: Session, data_publicacao: date, tipo_processo: str,
                              dias: int | None = None) -> date:
     # Sem dias informados, vale o padrão do tipo. O advogado pode ajustar os
-    # dias de um prazo "A conferir" (Spec 012); no Criminal continuam corridos
+    # dias de um prazo "A conferir" (Spec 013); no Criminal continuam corridos
     if dias is None:
         dias = buscar_prazo_por_tipo(tipo_processo)
     if tipo_processo.lower() == "criminal":
@@ -135,7 +135,7 @@ def criar_prazo(db: Session, prazo_data: PrazoCreate):
 def criar_prazo_a_conferir(db: Session, processo: Processo):
     """
     Publicação nova num processo assumido vira um prazo "A conferir", que o
-    advogado confirma, ajusta ou descarta (Spec 012). Só cria se a publicação
+    advogado confirma, ajusta ou descarta (Spec 013). Só cria se a publicação
     do processo for mais nova que a do prazo mais recente dele, de qualquer
     situação: assim um prazo descartado não volta na próxima atualização.
     Não faz commit; quem chama grava junto com o processo.
@@ -169,7 +169,7 @@ def criar_prazo_a_conferir(db: Session, processo: Processo):
 def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
-    # Descartado sai do Painel e do Calendário pelo finalizado (Spec 012)
+    # Descartado sai do Painel e do Calendário pelo finalizado (Spec 013)
     if dados_dict.get("situacao") == "Descartado":
         dados_dict["finalizado"] = True
 
@@ -187,7 +187,7 @@ def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
 
     # Trocar a data da publicação recalcula o vencimento. Apagar a data não
     # pode: sem publicação não há de onde contar (Spec 002)
-    # Trocar os dias também recalcula, a partir da mesma publicação (Spec 012)
+    # Trocar os dias também recalcula, a partir da mesma publicação (Spec 013)
     if "data_publicacao" in dados_dict or "dias" in dados_dict:
         data_publicacao = dados_dict.get("data_publicacao", prazo.data_publicacao)
         if data_publicacao is None:
