@@ -4,6 +4,7 @@ from .cliente import Cliente
 from .processo import Processo
 from .prazo import Prazo
 from .documento import Documento
+from .publicacao import Publicacao
 from .feriado import Feriado
 from .token_recuperacao import TokenRecuperacao
 from ..database import Base
