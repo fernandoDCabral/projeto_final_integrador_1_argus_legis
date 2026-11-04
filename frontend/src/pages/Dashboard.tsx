@@ -233,6 +233,8 @@ export default function Dashboard() {
   const [diasDigitados, setDiasDigitados] = useState<{ [prazoId: number]: string }>({});
   const [salvandoPrazo, setSalvandoPrazo] = useState(false);
   const [erroPrazo, setErroPrazo] = useState("");
+  // Prazo cujo "Marcar como cumprido" falhou: o erro aparece na linha dele, e não no "A conferir" (Spec 016)
+  const [prazoComErro, setPrazoComErro] = useState<number | null>(null);
 
   // Estados Globais
   const [erro, setErro] = useState("");
@@ -502,6 +504,7 @@ export default function Dashboard() {
     }
     setSalvandoPrazo(true);
     setErroPrazo("");
+    setPrazoComErro(null);
     try {
       await api.patch(`/prazos/${prazo.id}`, situacao === "Descartado" ? { situacao } : { dias, ...(situacao && { situacao }) });
       // Busca o processo de novo para a etiqueta, a faixa e o Painel ficarem certos
@@ -510,6 +513,26 @@ export default function Dashboard() {
       setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
     } catch (error) {
       setErroPrazo(mensagemDeErro(error, "Não foi possível salvar o prazo."));
+    } finally {
+      setSalvandoPrazo(false);
+    }
+  };
+
+  // Marcar como cumprido ou desfazer (Spec 016): só no prazo Confirmado e não interno.
+  // Cumprido = finalizado; Painel, Calendário e faixa já ignoram prazo finalizado
+  const handleCumprirPrazo = async (processo: any, prazo: any, finalizado: boolean) => {
+    setSalvandoPrazo(true);
+    setErroPrazo("");
+    setPrazoComErro(null);
+    try {
+      await api.patch(`/prazos/${prazo.id}`, { finalizado });
+      // Mesmo caminho do confirmar: busca o processo de novo para a faixa e a lista ficarem certas
+      const { data } = await api.get(`/processos/${processo.id}`);
+      setProcessoAberto(data);
+      setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
+    } catch (error) {
+      setErroPrazo(mensagemDeErro(error, "Não foi possível salvar o prazo."));
+      setPrazoComErro(prazo.id);
     } finally {
       setSalvandoPrazo(false);
     }
@@ -1017,7 +1040,7 @@ export default function Dashboard() {
                           Descartar (não gera prazo)
                         </button>
                       </div>
-                      {erroPrazo && <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroPrazo}</div>}
+                      {erroPrazo && prazoComErro === null && <div style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroPrazo}</div>}
                     </>
                   )}
                 </div>
@@ -1025,6 +1048,8 @@ export default function Dashboard() {
             );
           }
 
+          // Prazo Confirmado e não interno pode ser cumprido; o Prazo Inicial antigo continua "Finalizado" (Spec 016)
+          const podeCumprir = prazo.situacao === "Confirmado" && !prazo.interno;
           return (
             <li key={prazo.id} style={{ ...styles.itemLinha, ...(i === 0 && styles.primeiraLinha) }}>
               <div style={{ minWidth: 0 }}>
@@ -1035,9 +1060,18 @@ export default function Dashboard() {
                     : `Publicação ${formatarData(prazo.data_publicacao)} · ${verbo} ${formatarData(prazo.data_vencimento)}`}
                 </span>
               </div>
-              <span style={estiloEtiqueta(prazo.finalizado ? "neutro" : infoPrazo.tipo)}>
-                {prazo.finalizado ? "Finalizado" : infoPrazo.texto}
-              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                <span style={estiloEtiqueta(prazo.finalizado ? "neutro" : infoPrazo.tipo)}>
+                  {prazo.finalizado ? (podeCumprir ? "Cumprido" : "Finalizado") : infoPrazo.texto}
+                </span>
+                {/* Botão só para o responsável, no processo completo; na prévia fica só a etiqueta */}
+                {podeConferir && podeCumprir && (
+                  <button type="button" onClick={() => handleCumprirPrazo(processo, prazo, !prazo.finalizado)} disabled={salvandoPrazo} style={styles.btnMiniNeutro}>
+                    {prazo.finalizado ? "Desfazer" : "Marcar como cumprido"}
+                  </button>
+                )}
+              </div>
+              {erroPrazo && prazoComErro === prazo.id && <div style={{ ...styles.avisoInline, width: "100%" }}>{erroPrazo}</div>}
             </li>
           );
         })}
