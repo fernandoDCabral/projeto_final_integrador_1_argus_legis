@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Literal
 
 class PrazoBase(BaseModel):
@@ -23,6 +23,8 @@ class PrazoResponse(PrazoBase):
     situacao: str
     # Nulo nos prazos antigos: a tela mostra o padrão do tipo
     dias: Optional[int] = None
+    # Quando foi marcado como cumprido (Spec 016); só leitura, o PrazoUpdate não aceita
+    concluido_em: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 class PrazoUpdate(BaseModel):
