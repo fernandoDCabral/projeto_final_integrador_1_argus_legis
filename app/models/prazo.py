@@ -1,6 +1,6 @@
 from __future__ import annotations
-from datetime import date
-from sqlalchemy import String, Integer, Date, ForeignKey, Boolean
+from datetime import date, datetime
+from sqlalchemy import String, Integer, Date, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING, Optional
 from ..database import Base
@@ -22,6 +22,8 @@ class Prazo(Base):
     situacao: Mapped[str] = mapped_column(String(20), default="Confirmado", server_default="Confirmado")
     # Dias do prazo; nulo nos prazos antigos, que usam o padrão do tipo
     dias: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Quando foi marcado como cumprido (Spec 016); nulo nos que já estavam finalizados
+    concluido_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Foreign keys
     processo_id: Mapped[int] = mapped_column(ForeignKey("processos.id"))

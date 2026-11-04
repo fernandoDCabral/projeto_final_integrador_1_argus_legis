@@ -515,6 +515,24 @@ export default function Dashboard() {
     }
   };
 
+  // Marcar o prazo como cumprido e desfazer (Spec 016). Cumprido sai do Painel e do
+  // Calendário pelo finalizado; a data de cumprimento é gravada pelo servidor
+  const handleCumprirPrazo = async (processo: any, prazo: any, cumprido: boolean) => {
+    setSalvandoPrazo(true);
+    setErroPrazo("");
+    try {
+      await api.patch(`/prazos/${prazo.id}`, { finalizado: cumprido });
+      // Busca o processo de novo para a etiqueta, a faixa, a tabela e o Painel ficarem certos
+      const { data } = await api.get(`/processos/${processo.id}`);
+      setProcessoAberto(data);
+      setMeusProcessos(lista => lista.map(p => (p.id === data.id ? data : p)));
+    } catch (error) {
+      setErroPrazo(mensagemDeErro(error, "Não foi possível salvar o prazo."));
+    } finally {
+      setSalvandoPrazo(false);
+    }
+  };
+
   // --- ATUALIZAR TODOS PELO DJEN (Spec 013) ---
   // Um processo por vez: mostra o progresso e respeita o limite do DJEN (429).
   // Só consulta as linhas "aguardando", assim o "Tentar de novo" reaproveita a lista
@@ -793,6 +811,15 @@ export default function Dashboard() {
       .filter((prazo: any) => !prazo.finalizado)
       .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento))[0];
 
+  // Prazo que o advogado marcou como cumprido (Spec 016). O Prazo Inicial antigo e o
+  // Descartado também são finalizados, mas não são cumpridos
+  const prazoCumprido = (prazo: any) =>
+    prazo.finalizado && prazo.situacao === "Confirmado" && !prazo.interno;
+
+  // Dia em que foi marcado, no fuso de Brasília; vazio nos que já estavam finalizados antes da Spec 016
+  const dataCumprimento = (prazo: any) =>
+    prazo.concluido_em ? new Date(prazo.concluido_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "";
+
   // Publicação nova do DJEN que criou prazo e o advogado ainda não conferiu (Spec 013)
   const temPrazoAConferir = (processo: any) =>
     (processo.prazos ?? []).some((prazo: any) => prazo.situacao === "A conferir");
@@ -843,6 +870,8 @@ export default function Dashboard() {
     if (!processo.responsavel) return etiquetaDaPiscina(processo);
     const vencimento = prazoAberto(processo)?.data_vencimento;
     const info = analisarPrazo(vencimento);
+    // Sem prazo em aberto, mas com algum cumprido: diz isso em vez de "Sem prazo" (Spec 016)
+    if (!vencimento && (processo.prazos ?? []).some(prazoCumprido)) return { tipo: "neutro", texto: "✔ Prazo cumprido" };
     return { tipo: info.tipo, texto: vencimento ? `${info.texto} · ${formatarData(vencimento).slice(0, 5)}` : info.texto };
   };
 
@@ -955,14 +984,17 @@ export default function Dashboard() {
   // Usada na prévia e na tela do processo completo. Conferir o prazo só no completo
   const renderListaPrazos = (processo: any, completo: boolean) => {
     // "A conferir" sobe para o topo, em destaque (Spec 013)
+    // "A conferir" primeiro; o resto por id, porque a API não ordena e o banco devolve o prazo
+    // atualizado no fim da lista (o prazo "pulava" de lugar ao cumprir ou confirmar)
     const prazos = [...(processo.prazos ?? [])].sort((a: any, b: any) =>
-      (b.situacao === "A conferir" ? 1 : 0) - (a.situacao === "A conferir" ? 1 : 0));
+      (b.situacao === "A conferir" ? 1 : 0) - (a.situacao === "A conferir" ? 1 : 0) || a.id - b.id);
     const padraoDias = DIAS_POR_TIPO[processo.tipo_processo];
     // Criminal conta em dias corridos (Spec 002)
     const rotuloDias = processo.tipo_processo === "Criminal" ? "Dias corridos" : "Dias úteis";
     // Só o responsável confere; o ADMIN não chega ao processo completo
     const podeConferir = completo && processo.responsavel?.id === user?.id;
     return prazos.length > 0 ? (
+      <>
       <ul style={styles.listaLinhas}>
         {prazos.map((prazo: any, i: number) => {
           const infoPrazo = analisarPrazo(prazo.data_vencimento);
@@ -1035,13 +1067,33 @@ export default function Dashboard() {
                     : `Publicação ${formatarData(prazo.data_publicacao)} · ${verbo} ${formatarData(prazo.data_vencimento)}`}
                 </span>
               </div>
-              <span style={estiloEtiqueta(prazo.finalizado ? "neutro" : infoPrazo.tipo)}>
-                {prazo.finalizado ? "Finalizado" : infoPrazo.texto}
-              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                <span style={estiloEtiqueta(prazo.finalizado ? "neutro" : infoPrazo.tipo)}>
+                  {prazoCumprido(prazo)
+                    ? `✔ Cumprido${dataCumprimento(prazo) ? ` em ${dataCumprimento(prazo)}` : ""}`
+                    : prazo.finalizado ? "Finalizado" : infoPrazo.texto}
+                </span>
+                {/* Só o responsável, no processo completo. Interno antigo e descartado não mudam (Spec 016) */}
+                {podeConferir && !prazo.interno && (
+                  <button
+                    type="button"
+                    onClick={() => handleCumprirPrazo(processo, prazo, !prazo.finalizado)}
+                    disabled={salvandoPrazo}
+                    style={styles.btnMiniNeutro}
+                  >
+                    {prazo.finalizado ? "Desfazer" : "Marcar como cumprido"}
+                  </button>
+                )}
+              </div>
             </li>
           );
         })}
       </ul>
+      {/* O erro do "A conferir" aparece dentro da caixa dele; os demais, aqui */}
+      {podeConferir && erroPrazo && !prazos.some((prazo: any) => prazo.situacao === "A conferir") && (
+        <div role="alert" style={{ ...styles.avisoInline, marginTop: "8px" }}>{erroPrazo}</div>
+      )}
+      </>
     ) : <div style={styles.textoSecundario}>Nenhum prazo cadastrado.</div>;
   };
 
@@ -1774,7 +1826,8 @@ export default function Dashboard() {
             </>
           ) : (
             <strong style={{ fontSize: "18px" }}>
-              {processo.status === "Encerrado" ? `Processo encerrado em ${formatarData(processo.encerrado_em)}` : "Sem prazo em aberto"}
+              {processo.status === "Encerrado" ? `Processo encerrado em ${formatarData(processo.encerrado_em)}`
+                : (processo.prazos ?? []).some(prazoCumprido) ? "✔ Prazo cumprido" : "Sem prazo em aberto"}
             </strong>
           )}
         </div>
@@ -2410,6 +2463,8 @@ export default function Dashboard() {
               {ordenados.length > 0 ? ordenados.map(processo => {
                 const vencimento = prazoAberto(processo)?.data_vencimento;
                 const infoPrazo = analisarPrazo(vencimento);
+                // Sem prazo em aberto, mas com algum cumprido (Spec 016)
+                const soCumpridos = !vencimento && (processo.prazos ?? []).some(prazoCumprido);
                 return (
                   <tr key={processo.id} style={styles.tabelaLinha}>
                     <td style={styles.td}>
@@ -2429,7 +2484,7 @@ export default function Dashboard() {
                         <span style={estiloEtiqueta("neutro")}>Encerrado em {formatarData(processo.encerrado_em)}</span>
                       ) : (
                         <span style={estiloEtiqueta(infoPrazo.tipo)}>
-                          {infoPrazo.texto}{vencimento ? ` · ${formatarData(vencimento).slice(0, 5)}` : ""}
+                          {soCumpridos ? "✔ Prazo cumprido" : infoPrazo.texto}{vencimento ? ` · ${formatarData(vencimento).slice(0, 5)}` : ""}
                         </span>
                       )}
                       {temPrazoAConferir(processo) && <div style={{ marginTop: "6px" }}>{renderEtiquetaConferir()}</div>}
@@ -2600,7 +2655,7 @@ const styles = {
   quandoMes: { fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.detalheTexto },
   cnj: { fontSize: "13px", color: CORES.suave, fontVariantNumeric: "tabular-nums" as const },
   etiqueta: { display: "inline-block", alignSelf: "flex-start", padding: "3px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600 },
-  itemPiscina: { display: "flex", flexDirection: "column" as const, gap: "6px", padding: "14px 0", borderTop: `1px solid ${CORES.linha}` },
+  itemPiscina: { display: "flex", flexDirection: "column" as const, gap: "6px", paddingTop: "14px", paddingBottom: "14px", borderTop: `1px solid ${CORES.linha}` },
   linkAcao: { alignSelf: "flex-start", display: "inline-flex", alignItems: "center", minHeight: "44px", padding: "0 2px", backgroundColor: "transparent", border: "none", borderBottom: `1px solid ${CORES.detalhe}`, color: CORES.marca, cursor: "pointer", fontSize: "15px", fontWeight: 600 },
 
   // Meus processos: busca, ordenação e tabela
@@ -2621,7 +2676,8 @@ const styles = {
 
   // Listas em linhas (prazos, peças) e dados em colunas (processo completo, prévia)
   listaLinhas: { margin: 0, padding: 0, listStyle: "none" },
-  itemLinha: { display: "flex", flexWrap: "wrap" as const, justifyContent: "space-between", gap: "8px 16px", padding: "14px 0", borderTop: `1px solid ${CORES.linha}` },
+  itemLinha: { display: "flex", flexWrap: "wrap" as const, justifyContent: "space-between", gap: "8px 16px", paddingTop: "14px", paddingBottom: "14px", borderTop: `1px solid ${CORES.linha}` },
+  // Sem o atalho `padding` junto: o React avisa ao trocar paddingTop quando a linha deixa de ser a primeira
   primeiraLinha: { borderTop: "none", paddingTop: 0 },
   dl: { display: "grid", gap: "16px 24px", margin: 0 },
   dt: { fontSize: "12px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: CORES.suave },

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.models import Processo, Prazo, Feriado
@@ -189,9 +189,39 @@ def criar_prazo_a_conferir(db: Session, processo: Processo):
 def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
-    # Descartado sai do Painel e do Calendário pelo finalizado (Spec 013)
-    if dados_dict.get("situacao") == "Descartado":
+    # Cumprir e desfazer (Spec 016). Olha o que o cliente mandou, antes de o
+    # Descartado forçar o finalizado logo abaixo
+    descartando = dados_dict.get("situacao") == "Descartado"
+    if "finalizado" in dados_dict and dados_dict["finalizado"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe se o prazo está finalizado."
+        )
+    if "finalizado" in dados_dict and dados_dict["finalizado"] != prazo.finalizado and not descartando:
+        cumprindo = dados_dict["finalizado"]
+        if prazo.interno:
+            raise HTTPException(
+                status_code=400,
+                detail="Prazo inicial antigo não pode ser reaberto nem cumprido."
+            )
+        if prazo.situacao == "Descartado":
+            raise HTTPException(
+                status_code=400,
+                detail="Prazo descartado não pode ser reaberto."
+            )
+        if cumprindo and prazo.situacao == "A conferir":
+            raise HTTPException(
+                status_code=400,
+                detail="Confirme ou descarte o prazo antes de marcar como cumprido."
+            )
+        # O momento vem do servidor; desfazer limpa a data
+        dados_dict["concluido_em"] = datetime.now(timezone.utc) if cumprindo else None
+
+    # Descartado sai do Painel e do Calendário pelo finalizado (Spec 013).
+    # Não é "cumprido": se já tinha data de cumprimento, ela sai
+    if descartando:
         dados_dict["finalizado"] = True
+        dados_dict["concluido_em"] = None
 
     # A coluna não aceita vazio; os dias, se vierem, precisam de um número
     if "situacao" in dados_dict and dados_dict["situacao"] is None:
