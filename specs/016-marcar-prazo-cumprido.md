@@ -1,5 +1,5 @@
 # Spec 016: Marcar prazo como cumprido
-**Status:** Aprovada   **Data:** 2026-11-04
+**Status:** Implementada   **Data:** 2026-11-04
 **Relacionadas:** Issue #106 · Spec 002 (revisão da contagem de prazos) · Spec 013 (Atualizar todos pelo DJEN, prazo "A conferir") · `MELHORIAS.md` item 15
 
 ## 1. Contexto
