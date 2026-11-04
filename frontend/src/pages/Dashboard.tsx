@@ -65,6 +65,7 @@ const ICONES = {
   busca: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
   fechar: <path d="M6 6l12 12M18 6L6 18" />,
   mais: <path d="M12 5v14M5 12h14" />,
+  sino: <><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15z" /><path d="M10 21h4" /></>,
 };
 
 // Etiqueta de situação do prazo (vencido, urgente, em dia ou neutro)
@@ -160,6 +161,25 @@ export default function Dashboard() {
     window.addEventListener("resize", aoRedimensionar);
     return () => window.removeEventListener("resize", aoRedimensionar);
   }, []);
+
+  // Sino de alertas de prazo (Spec 017): janela aberta e refs para devolver o foco ao botão
+  const [sinoAberto, setSinoAberto] = useState(false);
+  const botaoSinoRef = useRef<HTMLButtonElement>(null);
+  const fecharSinoRef = useRef<HTMLButtonElement>(null);
+
+  // Fecha com Esc e leva o foco para o X ao abrir
+  useEffect(() => {
+    if (!sinoAberto) return;
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") {
+        setSinoAberto(false);
+        botaoSinoRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", aoTeclar);
+    fecharSinoRef.current?.focus();
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [sinoAberto]);
 
   // Peças do processo aberto na prévia ou no processo completo (Spec 003)
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -841,6 +861,49 @@ export default function Dashboard() {
     .filter(p => p.status !== "Encerrado")
     .flatMap(p => (p.prazos ?? []).filter((prazo: any) => !prazo.finalizado).map((prazo: any) => ({ ...prazo, processo: p })))
     .sort((a: any, b: any) => a.data_vencimento.localeCompare(b.data_vencimento));
+
+  // Processos assumidos que pedem atenção, um por linha, no grupo mais grave (Spec 017).
+  // O "A conferir" não entra como vencido nem urgente: a data dele é provisória.
+  // A regra fica toda aqui para poder trocar a política depois
+  const GRUPOS_ALERTA = ["vencido", "urgente", "conferir"] as const;
+  type GrupoAlerta = typeof GRUPOS_ALERTA[number];
+  type AlertaDoProcesso = {
+    processo: any;
+    grupo: GrupoAlerta;
+    vencidos: number;
+    urgentes: number;
+    aConferir: number;
+    // Situação do prazo mais crítico (vencido ou urgente); fica vazia no grupo "conferir"
+    pior?: ReturnType<typeof analisarPrazo>;
+  };
+
+  const alertasDoAdvogado = (processos: any[]): AlertaDoProcesso[] =>
+    processos
+      .filter(processo => processo.status !== "Encerrado")
+      .flatMap((processo): AlertaDoProcesso[] => {
+        const abertos = (processo.prazos ?? []).filter((prazo: any) => !prazo.finalizado);
+        const situacoes = abertos
+          .filter((prazo: any) => prazo.situacao !== "A conferir")
+          .map((prazo: any) => analisarPrazo(prazo.data_vencimento));
+        const vencidos = situacoes.filter((s: ReturnType<typeof analisarPrazo>) => s.tipo === "vencido");
+        const urgentes = situacoes.filter((s: ReturnType<typeof analisarPrazo>) => s.tipo === "urgente");
+        const aConferir = abertos.filter((prazo: any) => prazo.situacao === "A conferir").length;
+        if (!vencidos.length && !urgentes.length && !aConferir) return [];
+
+        const grupo: GrupoAlerta = vencidos.length ? "vencido" : urgentes.length ? "urgente" : "conferir";
+        // Vencido tem dias negativos e urgente, zero ou mais: o menor é sempre o mais crítico
+        const pior = [...vencidos, ...urgentes].sort((a, b) => a.dias! - b.dias!)[0];
+        return [{ processo, grupo, vencidos: vencidos.length, urgentes: urgentes.length, aConferir, pior }];
+      })
+      .sort((a, b) =>
+        GRUPOS_ALERTA.indexOf(a.grupo) - GRUPOS_ALERTA.indexOf(b.grupo)
+        || (a.pior?.dias ?? 0) - (b.pior?.dias ?? 0)
+        || a.processo.titulo.localeCompare(b.processo.titulo));
+
+  // Só o advogado tem sino; o ADMIN não tem prazos para acompanhar
+  const alertas = user?.perfil === "ADVOGADO" ? alertasDoAdvogado(meusProcessos) : [];
+  const rotuloSino = `Alertas de prazo: ${alertas.length === 0 ? "nenhum" : `${alertas.length} ${alertas.length === 1 ? "processo" : "processos"}`}`;
+  const textoSelo = alertas.length > 99 ? "99+" : String(alertas.length);
 
   const mudarMes = (quantos: number) =>
     setMesCalendario(mes => new Date(mes.getFullYear(), mes.getMonth() + quantos, 1));
@@ -2191,6 +2254,79 @@ export default function Dashboard() {
     );
   };
 
+  const fecharSino = () => {
+    setSinoAberto(false);
+    botaoSinoRef.current?.focus();
+  };
+
+  // Contagem sempre com a palavra junto do número: "2 vencidos", "1 urgente", "1 a conferir"
+  const contagemDoAlerta = (alerta: AlertaDoProcesso) => [
+    alerta.vencidos > 0 && `${alerta.vencidos} ${alerta.vencidos === 1 ? "vencido" : "vencidos"}`,
+    alerta.urgentes > 0 && `${alerta.urgentes} ${alerta.urgentes === 1 ? "urgente" : "urgentes"}`,
+    alerta.aConferir > 0 && `${alerta.aConferir} a conferir`,
+  ].filter(Boolean).join(" · ");
+
+  // Janela do sino (Spec 017): mesmo padrão da prévia e da janela do DJEN
+  const renderJanelaSino = () => {
+    if (!sinoAberto || user?.perfil !== "ADVOGADO") return null;
+    const grupos: { chave: GrupoAlerta; titulo: string; tipo: Situacao }[] = [
+      { chave: "vencido", titulo: "Vencidos", tipo: "vencido" },
+      { chave: "urgente", titulo: "Vencem em até 3 dias", tipo: "urgente" },
+      { chave: "conferir", titulo: "A conferir", tipo: "urgente" },
+    ];
+
+    return (
+      // Clicar no fundo escuro fecha; clicar dentro da janela não
+      <div style={styles.veu} onClick={evento => { if (evento.target === evento.currentTarget) fecharSino(); }}>
+        <section style={styles.modalPrevia} role="dialog" aria-modal="true" aria-labelledby="titulo-sino">
+          <div style={styles.modalCab}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 id="titulo-sino" style={styles.tituloModalPrevia}>Alertas de prazo</h2>
+              <div style={styles.subtituloPagina}>
+                {alertas.length === 0 ? "Nada pedindo atenção agora."
+                  : `${alertas.length} ${alertas.length === 1 ? "processo pede" : "processos pedem"} atenção`}
+              </div>
+            </div>
+            <button type="button" ref={fecharSinoRef} onClick={fecharSino} aria-label="Fechar" style={styles.btnFechar}>{icone(ICONES.fechar, 18, 2)}</button>
+          </div>
+
+          <div style={styles.modalCorpo}>
+            {alertas.length === 0 && <div role="status">Nenhum prazo pedindo atenção.</div>}
+
+            {grupos.map(grupo => {
+              const doGrupo = alertas.filter(alerta => alerta.grupo === grupo.chave);
+              if (doGrupo.length === 0) return null;
+              return (
+                <section key={grupo.chave} aria-label={grupo.titulo}>
+                  <h3 style={{ ...styles.tituloGrupoSino, color: CORES[grupo.tipo].texto }}>{grupo.titulo} ({doGrupo.length})</h3>
+                  <ul style={styles.listaLinhas}>
+                    {doGrupo.map((alerta, i) => (
+                      <li key={alerta.processo.id} style={i === 0 ? undefined : { borderTop: `1px solid ${CORES.linha}` }}>
+                        <button
+                          type="button"
+                          onClick={() => { setSinoAberto(false); abrirProcessoCompleto(alerta.processo); }}
+                          style={styles.linhaSino}
+                        >
+                          <span style={{ minWidth: 0, flex: "1 1 200px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <strong>{alerta.processo.titulo}</strong>
+                            <span style={styles.cnj}>{formatarCnj(alerta.processo.cnj)} · {alerta.processo.tribunal}</span>
+                            <span style={styles.contagemSino}>{contagemDoAlerta(alerta)}</span>
+                          </span>
+                          {/* Dias do prazo mais crítico; o "A conferir" não tem, porque o vencimento dele é provisório */}
+                          {alerta.pior && <span style={estiloEtiqueta(alerta.pior.tipo)}>{alerta.pior.texto}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
   // Título e subtítulo próprios de cada tela (Spec 007)
   const renderTopo = (titulo: string, subtitulo: string, acao?: React.ReactNode) => (
     <header style={styles.topo}>
@@ -2533,7 +2669,24 @@ export default function Dashboard() {
             <div style={styles.selo} aria-hidden="true">A</div>
             <div style={{ ...styles.nomeMarca, fontSize: celular ? "20px" : "24px" }}>Argus Legis</div>
           </div>
-          {celular && <button type="button" onClick={logout} style={{ ...styles.logoutButton, marginTop: 0 }}>Sair</button>}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {/* Sino de alertas de prazo, só do advogado (Spec 017). No celular fica ao lado do Sair;
+                no desktop é um item do menu, porque a marca ocupa a linha toda */}
+            {celular && user?.perfil === "ADVOGADO" && (
+              <button
+                type="button"
+                ref={botaoSinoRef}
+                onClick={() => setSinoAberto(true)}
+                aria-haspopup="dialog"
+                aria-label={rotuloSino}
+                style={styles.botaoSino}
+              >
+                {icone(ICONES.sino, 20)}
+                {alertas.length > 0 && <span aria-hidden="true" style={styles.seloSino}>{textoSelo}</span>}
+              </button>
+            )}
+            {celular && <button type="button" onClick={logout} style={{ ...styles.logoutButton, marginTop: 0 }}>Sair</button>}
+          </div>
         </div>
 
         <ul style={{ ...styles.listaMenu, flexDirection: celular ? "row" : "column", flexWrap: "wrap" }}>
@@ -2551,6 +2704,23 @@ export default function Dashboard() {
               </button>
             </li>
           ))}
+          {/* Desktop: o sino abre uma janela (não é uma tela), por isso fica separado e sem aria-current */}
+          {!celular && user?.perfil === "ADVOGADO" && (
+            <li style={styles.itemSino}>
+              <button
+                type="button"
+                ref={botaoSinoRef}
+                onClick={() => setSinoAberto(true)}
+                aria-haspopup="dialog"
+                aria-label={rotuloSino}
+                style={{ ...styles.menuItemInativo, whiteSpace: "nowrap" }}
+              >
+                {icone(ICONES.sino)}
+                Alertas de prazo
+                {alertas.length > 0 && <span aria-hidden="true" style={styles.seloMenu}>{textoSelo}</span>}
+              </button>
+            </li>
+          )}
         </ul>
 
         {!celular && (
@@ -2588,6 +2758,7 @@ export default function Dashboard() {
         {/* A prévia abre do Painel e da Piscina */}
         {user?.perfil !== "ADMIN" && renderModalPrevia()}
         {renderJanelaDjen()}
+        {renderJanelaSino()}
       </main>
     </div>
   );
@@ -2611,6 +2782,14 @@ const styles = {
   selo: { width: "40px", height: "40px", border: `1.5px solid ${CORES.detalhe}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "22px", fontWeight: 700, color: CORES.detalhe },
   nomeMarca: { fontFamily: FONTE_TITULO, fontVariantNumeric: "lining-nums tabular-nums", fontSize: "24px", fontWeight: 600, letterSpacing: "0.04em" },
   listaMenu: { display: "flex", gap: "4px", margin: 0, padding: 0, listStyle: "none" },
+  // Sino de alertas de prazo (Spec 017)
+  botaoSino: { position: "relative" as const, width: "44px", height: "44px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "transparent", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "6px", color: CORES.marcaTexto, cursor: "pointer" },
+  seloSino: { position: "absolute" as const, top: "-6px", right: "-6px", minWidth: "20px", height: "20px", padding: "0 5px", boxSizing: "border-box" as const, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "10px", backgroundColor: CORES.vencido.bola, color: "white", fontSize: "11px", fontWeight: 700, fontVariantNumeric: "tabular-nums" as const },
+  itemSino: { marginTop: "8px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.12)" },
+  seloMenu: { marginLeft: "auto", minWidth: "22px", height: "22px", padding: "0 6px", boxSizing: "border-box" as const, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "11px", backgroundColor: CORES.vencido.bola, color: "white", fontSize: "12px", fontWeight: 700, fontVariantNumeric: "tabular-nums" as const },
+  tituloGrupoSino: { margin: "0 0 4px", fontSize: "13px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" as const },
+  linhaSino: { width: "100%", minHeight: "44px", boxSizing: "border-box" as const, display: "flex", flexWrap: "wrap" as const, alignItems: "center", justifyContent: "space-between", gap: "8px 16px", padding: "12px 0", backgroundColor: "transparent", border: "none", color: CORES.tinta, cursor: "pointer", fontSize: "15px", textAlign: "left" as const },
+  contagemSino: { fontSize: "14px", fontWeight: 600, color: CORES.suave },
   menuItemAtivo: { ...menuItemBase, color: CORES.marcaTexto, backgroundColor: "rgba(255,255,255,0.08)", boxShadow: `inset 3px 0 0 ${CORES.detalhe}` },
   menuItemInativo: menuItemBase,
   usuario: { display: "flex", flexDirection: "column" as const, gap: "2px", borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: "18px" },
