@@ -42,6 +42,9 @@ const FONTE_TITULO = '"EB Garamond", Georgia, serif';
 const URL_CERTIDAO_DJEN = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
 
 type Situacao = "vencido" | "urgente" | "emdia" | "neutro";
+// Quantos processos da piscina aparecem no Painel antes do "Ver todos"
+const LIMITE_PISCINA_PAINEL = 6;
+
 type AbaAdvogado = "painel" | "calendario" | "processos" | "piscina";
 
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -156,6 +159,8 @@ export default function Dashboard() {
   // Estilo inline não tem media query: no celular o menu vai para cima por esta largura
   const [largura, setLargura] = useState(window.innerWidth);
   const celular = largura < 700;
+  // Painel: abaixo disso as colunas se empilham
+  const empilhado = largura < 1100;
   useEffect(() => {
     const aoRedimensionar = () => setLargura(window.innerWidth);
     window.addEventListener("resize", aoRedimensionar);
@@ -2338,8 +2343,11 @@ export default function Dashboard() {
     </header>
   );
 
-  // Grade do mês: usada no Painel (cheio = false) e no item Calendário (cheio = true)
+  // Grade do mês: compacto no Painel (coluna estreita, prazos como pontinhos) e cheio no item Calendário
   const renderCalendario = (cheio: boolean) => {
+    const compacto = !cheio;
+    // Pontinhos no lugar dos textos: no celular e no calendário compacto do Painel
+    const pontos = celular || compacto;
     const ano = mesCalendario.getFullYear();
     const mes = mesCalendario.getMonth();
     const diaDaSemanaDoPrimeiro = mesCalendario.getDay();
@@ -2349,10 +2357,10 @@ export default function Dashboard() {
     const nomeMes = MESES[mes].charAt(0).toUpperCase() + MESES[mes].slice(1);
 
     return (
-      <section style={styles.cartao} aria-label="Calendário de prazos">
+      <section style={compacto ? { ...styles.cartao, padding: "16px" } : styles.cartao} aria-label="Calendário de prazos">
         <div style={{ ...styles.cabCartao, flexWrap: "wrap" }}>
-          <h2 style={styles.tituloCartao}>{nomeMes} de {ano}</h2>
-          <div style={{ display: "flex", gap: "6px" }}>
+          <h2 style={compacto ? { ...styles.tituloCartao, fontSize: "22px" } : styles.tituloCartao}>{nomeMes} de {ano}</h2>
+          <div style={{ display: "flex", gap: "6px", marginLeft: compacto ? "auto" : undefined }}>
             <button
               type="button"
               onClick={() => { const hoje = new Date(); setMesCalendario(new Date(hoje.getFullYear(), hoje.getMonth(), 1)); }}
@@ -2367,10 +2375,10 @@ export default function Dashboard() {
 
         <div style={{ overflowX: "auto" }}>
           {/* No celular a grade cabe na largura: colunas sem mínimo e uma letra por dia */}
-          <div style={celular ? { ...styles.gradeMes, gridTemplateColumns: "repeat(7, minmax(0, 1fr))", minWidth: 0 } : styles.gradeMes}>
+          <div style={pontos ? { ...styles.gradeMes, gridTemplateColumns: "repeat(7, minmax(0, 1fr))", minWidth: 0 } : styles.gradeMes}>
             {DIAS_DA_SEMANA.map((dia, i) => (
-              <div key={i} style={celular ? { ...styles.diaSemana, padding: "6px 0", textAlign: "center", letterSpacing: 0 } : styles.diaSemana}>
-                {celular ? dia.charAt(0) : dia}
+              <div key={i} style={pontos ? { ...styles.diaSemana, padding: "6px 0", textAlign: "center", letterSpacing: 0 } : styles.diaSemana}>
+                {pontos ? dia.charAt(0) : dia}
               </div>
             ))}
             {Array.from({ length: totalCelulas }, (_, i) => {
@@ -2383,12 +2391,12 @@ export default function Dashboard() {
                 ? prazosAbertos.filter(p => parseDataLocal(p.data_vencimento).getTime() === data.getTime())
                 : [];
               return (
-                <div key={i} style={{ ...styles.diaCalendario, minHeight: celular ? "52px" : cheio ? "120px" : "96px", padding: celular ? "4px" : "8px", backgroundColor: fimDeSemana ? "#FAF8F3" : CORES.papel }}>
+                <div key={i} style={{ ...styles.diaCalendario, minHeight: celular ? "52px" : compacto ? "48px" : "120px", padding: pontos ? "4px" : "8px", backgroundColor: fimDeSemana ? "#FAF8F3" : CORES.papel }}>
                   <span style={ehHoje ? styles.numeroHoje : { ...styles.numeroDia, color: dentro ? CORES.suave : "#B3AB9C" }}>
                     {data.getDate()}
                   </span>
-                  {celular ? (
-                    // No celular cada prazo é só um pontinho com a cor da situação; o texto fica no title/aria-label
+                  {pontos ? (
+                    // Cada prazo é só um pontinho com a cor da situação; o texto fica no title/aria-label
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "3px" }}>
                       {prazosDoDia.map(prazo => (
                         <span
@@ -2415,7 +2423,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div style={styles.legenda}>
+        <div style={compacto ? { ...styles.legenda, gap: "6px 12px", fontSize: "12px" } : styles.legenda}>
           <span style={styles.itemLegenda}><i style={{ ...styles.bola, backgroundColor: CORES.vencido.bola }} />Vencido</span>
           <span style={styles.itemLegenda}><i style={{ ...styles.bola, backgroundColor: CORES.urgente.bola }} />Vence em até 3 dias</span>
           <span style={styles.itemLegenda}><i style={{ ...styles.bola, backgroundColor: CORES.emdia.bola }} />Em dia</span>
@@ -2470,10 +2478,35 @@ export default function Dashboard() {
           ))}
         </section>
 
+        {/* Piscina em destaque (área principal, à esquerda); calendário compacto e próximos prazos na coluna da direita.
+            Em tela estreita as colunas se empilham, com a piscina primeiro */}
         <div style={styles.gradePainel}>
-          <div style={{ flex: "2 1 620px", minWidth: 0 }}>{renderCalendario(false)}</div>
+          <div style={{ flex: "2 1 480px", minWidth: 0 }}>
+            <section style={styles.cartao} aria-label="Piscina">
+              <div style={styles.cabCartao}>
+                <h2 style={styles.tituloCartao}>Na piscina</h2>
+                <span style={styles.textoSecundario}>
+                  {piscinaProcessos.length} {piscinaProcessos.length === 1 ? "processo aguardando" : "processos aguardando"} um responsável
+                </span>
+              </div>
+              {piscinaProcessos.length > 0 ? (
+                <>
+                  {piscinaProcessos.slice(0, LIMITE_PISCINA_PAINEL).map(renderItemPiscina)}
+                  {piscinaProcessos.length > LIMITE_PISCINA_PAINEL && (
+                    <button type="button" onClick={() => irPara("piscina")} style={{ ...styles.linkAcao, marginTop: "8px" }}>
+                      Ver todos ({piscinaProcessos.length})
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div style={styles.textoSecundario}>A piscina está vazia.</div>
+              )}
+            </section>
+          </div>
 
-          <div style={styles.ladoPainel}>
+          <div style={{ ...styles.ladoPainel, flex: "1 1 360px", maxWidth: empilhado ? "none" : "420px" }}>
+            {renderCalendario(false)}
+
             <section style={styles.cartao} aria-label="Próximos prazos">
               <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Próximos prazos</h2></div>
               {proximos.length > 0 ? (
@@ -2499,22 +2532,6 @@ export default function Dashboard() {
                 </ul>
               ) : (
                 <div style={styles.textoSecundario}>Nenhum prazo em aberto.</div>
-              )}
-            </section>
-
-            <section style={styles.cartao} aria-label="Piscina">
-              <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Na piscina</h2></div>
-              {piscinaProcessos.length > 0 ? (
-                <>
-                  {piscinaProcessos.slice(0, 3).map(renderItemPiscina)}
-                  {piscinaProcessos.length > 3 && (
-                    <button type="button" onClick={() => irPara("piscina")} style={{ ...styles.linkAcao, marginTop: "8px" }}>
-                      Ver todos ({piscinaProcessos.length})
-                    </button>
-                  )}
-                </>
-              ) : (
-                <div style={styles.textoSecundario}>A piscina está vazia.</div>
               )}
             </section>
           </div>
