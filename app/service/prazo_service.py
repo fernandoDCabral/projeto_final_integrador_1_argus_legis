@@ -189,6 +189,14 @@ def criar_prazo_a_conferir(db: Session, processo: Processo):
 def atualizar_prazo(db: Session, prazo: Prazo, dados_atualizados: PrazoUpdate):
     dados_dict = dados_atualizados.model_dump(exclude_unset=True)
 
+    # Cumprido = finalizado num prazo Confirmado e não interno (Spec 016).
+    # "A conferir" precisa ser confirmado antes, e o Descartado não volta
+    if "finalizado" in dados_dict and (prazo.situacao != "Confirmado" or prazo.interno):
+        raise HTTPException(
+            status_code=400,
+            detail="Só prazo confirmado pode ser marcado como cumprido."
+        )
+
     # Descartado sai do Painel e do Calendário pelo finalizado (Spec 013)
     if dados_dict.get("situacao") == "Descartado":
         dados_dict["finalizado"] = True
