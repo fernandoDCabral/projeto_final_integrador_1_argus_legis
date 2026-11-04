@@ -328,6 +328,31 @@ Sobraram vários escritórios e clientes fictícios criados durante os testes
 (`demo.reset@argus.br`, `a15631@a.adv.br`, "Escritorio A/B"...). Limpar antes de
 apresentar, ou zerar com `docker compose down -v` e recriar a conta pela tela.
 
+### 27. Recarregar os processos ao voltar para a aba
+
+O `Dashboard` busca `GET /processos/` só ao entrar. Com a aba aberta de um dia para
+o outro, o sino de alertas (Spec 017) e o Painel mostram a contagem antiga até o
+advogado agir; dados que mudem fora da aba também não aparecem. Ouvir
+`visibilitychange` e buscar de novo ao voltar o foco, com um `carregarDados`
+silencioso (o atual troca a tela por "Carregando painel..."). Vale mais quando houver
+atualização automática pelo DJEN ou aviso por e-mail (#85). Detalhes na seção 9 da
+`specs/017-sino-alertas-prazo.md`.
+
+### 28. Alinhar os contadores do Painel ao sino de alertas
+
+O Painel soma o prazo "A conferir" vencido em "Prazos vencidos" e "Vencem em até 3
+dias" (via `prazosAbertos`); o sino de alertas (Spec 017) o põe só no grupo "A conferir",
+porque a data dele é provisória. Decidido em 04/11/2026 manter assim na Spec 017. Se a
+diferença confundir, tirar o "A conferir" desses dois cartões (e talvez criar um
+cartão "A conferir"), decidindo também o que fazer em "Próximos prazos" e no Calendário.
+
+### 29. Prazo vencido há muito tempo no sino de alertas
+
+O sino (Spec 017) mostra em vermelho todo prazo vencido até o advogado resolvê-lo.
+Falta decidir com o Sávio se o vencido há muito tempo (por exemplo, mais de 30 dias,
+como `estimativaAntiga`) vira cinza. O ponto de troca é a função `alertasDoAdvogado`.
+O ruído já diminui conforme os prazos antigos são marcados como cumpridos (Spec 016).
+
 ---
 
 ## Referência rápida
