@@ -353,7 +353,8 @@ export default function Dashboard() {
     // dela (a lista vem da mais nova para a mais antiga). Distribuição não abre prazo (Spec 014)
     try {
       const { data } = await api.get<Publicacao[]>(`/processos/${processo.id}/publicacoes`);
-      const minha = data.find(pub => pub.para_mim && (pub.tipo || "").toLowerCase() !== "distribuição");
+      // Vale também a de um colega do escritório: quem assume o processo dele herda o prazo (Spec 018)
+      const minha = data.find(pub => (pub.para_mim || pub.do_escritorio) && (pub.tipo || "").toLowerCase() !== "distribuição");
       if (minha) {
         setDataPublicacaoAssumir(minha.data_publicacao);
         setPublicacaoSugerida(minha);
@@ -1826,6 +1827,8 @@ export default function Dashboard() {
                 <span style={styles.pontoTempo} aria-hidden="true" />
                 <time style={styles.dataTempo}>{formatarDataSimples(pub.data_disponibilizacao)}</time>
                 {pub.para_mim && <span style={{ ...estiloEtiqueta("emdia"), marginLeft: "8px" }}>sua</span>}
+                {/* Dirigida a um colega do escritório, e não a você (Spec 018) */}
+                {pub.do_escritorio && !pub.para_mim && <span style={{ ...estiloEtiqueta("neutro"), marginLeft: "8px" }}>escritório</span>}
                 <div>
                   {pub.tipo || "Comunicação"}
                   {(pub.tipo || "").toLowerCase() === "distribuição" && <span style={styles.textoSecundario}> (não abre prazo)</span>}
@@ -2116,7 +2119,8 @@ export default function Dashboard() {
                 <div style={{ ...styles.textoSecundario, fontSize: "13px", marginTop: "6px" }}>
                   {/* A frase explica de onde veio a sugestão, mesmo se a data for trocada à mão */}
                   {publicacaoSugerida
-                    ? `Sugerida pela última publicação para a sua OAB: ${publicacaoSugerida.tipo || "Comunicação"} de ${formatarDataSimples(publicacaoSugerida.data_disponibilizacao)}.`
+                    // A de um colega do escritório não é "sua" (Spec 018)
+                    ? `Sugerida pela última publicação para ${publicacaoSugerida.para_mim ? "a sua OAB" : "uma OAB do escritório"}: ${publicacaoSugerida.tipo || "Comunicação"} de ${formatarDataSimples(publicacaoSugerida.data_disponibilizacao)}.`
                     : !processo.data_publicacao
                     ? "Informe a data em que a publicação saiu no Diário (confira no DJEN)."
                     : processo.link_publicacao || processo.hash_publicacao
