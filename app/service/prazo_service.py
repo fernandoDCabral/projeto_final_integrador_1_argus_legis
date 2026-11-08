@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from app.models import Processo, Prazo, Feriado
+from app.models import Processo, Prazo, Feriado, Usuario
 from app.schemas import PrazoCreate, PrazoUpdate
 
 PRAZOS_POR_TIPO = {
@@ -141,8 +141,10 @@ def criar_prazo_a_conferir(db: Session, processo: Processo):
     Não faz commit; quem chama grava junto com o processo.
 
     Se o responsável tem OAB e a publicação veio do DJEN, só conta
-    publicação dirigida à OAB dele: a intimação da outra parte não abre
-    prazo para ele (Spec 014). Sem OAB, ou vindo do DataJud (que não diz o
+    publicação dirigida a uma OAB do escritório do processo: a intimação da
+    outra parte não abre prazo (Spec 014), mas a de um colega sim, porque
+    quem assume o processo de outro advogado continua com o prazo dele
+    correndo (Spec 018). Sem OAB, ou vindo do DataJud (que não diz o
     destinatário), vale a publicação do processo, como antes.
     """
     if processo.responsavel_id is None or processo.encerrado_em or not processo.data_publicacao:
@@ -152,10 +154,18 @@ def criar_prazo_a_conferir(db: Session, processo: Processo):
     tipo_base = processo.tipo_publicacao
     responsavel = processo.responsavel
     if responsavel.oab_numero and processo.fonte_publicacao == "DJEN":
-        minha_oab = f"{responsavel.oab_numero}/{responsavel.oab_uf}"
+        # OABs de todos do escritório do processo, inclusive o responsável.
+        # Só o mesmo escritório: o advogado da outra parte pode usar o Argus
+        colegas = db.query(Usuario).filter(
+            Usuario.escritorio_id == processo.escritorio_id,
+            Usuario.oab_numero.isnot(None),
+            Usuario.oab_uf.isnot(None)
+        ).all()
+        oabs_do_escritorio = [f"{u.oab_numero}/{u.oab_uf}" for u in colegas]
         minhas = [
             p for p in processo.publicacoes
-            if minha_oab in p.oabs and (p.tipo or "").lower() != "distribuição"
+            if any(oab in p.oabs for oab in oabs_do_escritorio)
+            and (p.tipo or "").lower() != "distribuição"
         ]
         if not minhas:
             return None
