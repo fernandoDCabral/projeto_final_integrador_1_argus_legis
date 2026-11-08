@@ -455,6 +455,17 @@ def listar_publicacoes(
     if current_user.oab_numero:
         minha_oab = f"{current_user.oab_numero}/{current_user.oab_uf}"
 
+    # do_escritorio: alguma OAB de quem é do escritório do processo está entre
+    # as destinatárias, como na regra do prazo "A conferir" (Spec 018)
+    processo = db.query(models.Processo).filter(
+        models.Processo.id == processo_id).first()
+    colegas = db.query(models.Usuario).filter(
+        models.Usuario.escritorio_id == processo.escritorio_id,
+        models.Usuario.oab_numero.isnot(None),
+        models.Usuario.oab_uf.isnot(None)
+    ).all()
+    oabs_do_escritorio = [f"{u.oab_numero}/{u.oab_uf}" for u in colegas]
+
     resposta = []
     for publicacao in publicacoes:
         resposta.append({
@@ -466,5 +477,6 @@ def listar_publicacoes(
             "link": publicacao.link,
             "oabs": publicacao.oabs,
             "para_mim": minha_oab is not None and minha_oab in publicacao.oabs,
+            "do_escritorio": any(oab in publicacao.oabs for oab in oabs_do_escritorio),
         })
     return resposta
