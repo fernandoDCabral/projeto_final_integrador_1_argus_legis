@@ -42,4 +42,6 @@ export interface Publicacao {
   oabs: string[];
   // true quando a OAB do usuário logado está entre as destinatárias
   para_mim: boolean;
+  // true quando a OAB de alguém do escritório do processo está entre as destinatárias (Spec 018)
+  do_escritorio: boolean;
 }
