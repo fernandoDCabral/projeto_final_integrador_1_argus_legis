@@ -14,4 +14,6 @@ class PublicacaoResponse(BaseModel):
     oabs: List[str]
     # A OAB do usuário logado está entre as destinatárias
     para_mim: bool
+    # A OAB de alguém do escritório do processo está entre as destinatárias (Spec 018)
+    do_escritorio: bool
     model_config = ConfigDict(from_attributes=True)
