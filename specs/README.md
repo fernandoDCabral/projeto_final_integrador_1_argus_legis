@@ -40,3 +40,4 @@ pergunta o que falta e preenche o modelo.
 | 015 | [Manter a publicação do DJEN quando o DJEN está fora](015-publicacao-djen-fora.md) | Implementada |
 | 016 | [Marcar prazo como cumprido](016-marcar-prazo-cumprido.md) | Implementada |
 | 017 | [Sino de alertas de prazo](017-sino-alertas-prazo.md) | Aprovada |
+| 018 | ["A conferir" pela OAB do escritório](018-a-conferir-oab-do-escritorio.md) | Implementada |
