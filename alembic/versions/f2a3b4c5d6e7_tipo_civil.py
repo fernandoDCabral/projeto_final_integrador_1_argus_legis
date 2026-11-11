@@ -1,4 +1,4 @@
-"""tipo civel
+"""tipo civil
 
 Revision ID: f2a3b4c5d6e7
 Revises: e1f2a3b4c5d6
@@ -19,11 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # O tipo certo é "Cível". Os processos antigos gravados como "Civil"
-    # passam para "Cível", senão o cálculo do prazo não acha o tipo
-    op.execute("UPDATE processos SET tipo_processo = 'Cível' WHERE tipo_processo = 'Civil'")
+    # O tipo é "Civil". Alguns processos foram gravados como "Cível" e o
+    # cálculo do prazo não acha esse tipo: passam para "Civil"
+    op.execute("UPDATE processos SET tipo_processo = 'Civil' WHERE tipo_processo = 'Cível'")
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.execute("UPDATE processos SET tipo_processo = 'Civil' WHERE tipo_processo = 'Cível'")
+    # Não dá para saber quais eram "Cível" antes: fica como está
+    pass
