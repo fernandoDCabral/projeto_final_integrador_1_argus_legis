@@ -5,7 +5,7 @@ from app.models import Processo, Prazo, Feriado, Usuario
 from app.schemas import PrazoCreate, PrazoUpdate
 
 PRAZOS_POR_TIPO = {
-    "cível": 15,
+    "civil": 15,
     "criminal": 10,
     "trabalhista": 8,
     "administrativo": 30,
