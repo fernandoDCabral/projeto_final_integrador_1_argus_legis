@@ -240,7 +240,7 @@ def atualizar_dados_datajud(
     if not processo.cnj:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Processo sem número CNJ não pode ser consultado no DataJud."
+            detail="Processo sem número CNJ não pode ser consultado."
         )
 
     dados_consulta = datajud_service.consultar_processo(processo.cnj, db)
@@ -329,12 +329,12 @@ def atualizar_pelo_djen(
     if processo.status == "Encerrado":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Processo encerrado não é atualizado pelo DJEN."
+            detail="Processo encerrado não é atualizado."
         )
     if not processo.cnj:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Processo sem número CNJ não pode ser consultado no DJEN."
+            detail="Processo sem número CNJ não pode ser consultado."
         )
 
     agora = datetime.now(timezone.utc)
