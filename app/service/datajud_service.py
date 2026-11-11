@@ -99,7 +99,7 @@ def descobrir_indice(digitos: str) -> str:
 def _indisponivel() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail="O DataJud está sobrecarregado agora. Tente de novo em alguns minutos."
+        detail="A consulta está sobrecarregada agora. Tente de novo em alguns minutos."
     )
 
 def _buscar_registros(indice: str, digitos: str) -> list[dict]:
@@ -231,7 +231,7 @@ def _sugerir_tipo_processo(segmento: int, classe: Optional[str]) -> Optional[str
     if any(p in classe_normalizada for p in PALAVRAS_CRIMINAIS):
         return "Criminal"
     if any(p in classe_normalizada for p in PALAVRAS_CIVEIS):
-        return "Civil"
+        return "Cível"
     return None
 
 def consultar_processo(cnj: str, db: Session) -> dict:
@@ -255,7 +255,7 @@ def consultar_processo(cnj: str, db: Session) -> dict:
     if not registros:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Processo não encontrado no DataJud. Confira o número. "
+            detail="Processo não encontrado. Confira o número. "
                    "Processos recentes ou em segredo de justiça podem demorar "
                    "a aparecer."
         )
