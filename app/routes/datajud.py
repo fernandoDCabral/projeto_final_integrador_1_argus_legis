@@ -17,7 +17,6 @@ def consultar_processo(cnj: str, db: Session = Depends(database.get_db)):
     """
     Busca um processo na API pública do DataJud pelo número CNJ.
 
-    Serve para pré-preencher o cadastro. Não serve para contar prazo: o CNJ
-    recebe os dados dos tribunais com atraso, às vezes de semanas.
+    Serve para pré-preencher o cadastro.
     """
     return datajud_service.consultar_processo(cnj, db)
