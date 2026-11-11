@@ -86,7 +86,7 @@ const estiloEtiqueta = (tipo: Situacao) => ({
 const TIPOS_DOCUMENTO = ["Petição inicial", "Contestação", "Réplica", "Recurso", "Petição (outras)"];
 
 // Mesmos dias do backend (PRAZOS_POR_TIPO): usados quando o prazo não tem "dias" gravado (Spec 013)
-const DIAS_POR_TIPO: { [tipo: string]: number } = { "Cível": 15, Criminal: 10, Trabalhista: 8, Administrativo: 30 };
+const DIAS_POR_TIPO: { [tipo: string]: number } = { Civil: 15, Criminal: 10, Trabalhista: 8, Administrativo: 30 };
 
 const FORM_CLIENTE_VAZIO = {
   nome: "",
@@ -1759,7 +1759,7 @@ export default function Dashboard() {
                 <select id="campo-19" required style={styles.input} value={formProcesso.tipo_processo} onChange={e => setFormProcesso({...formProcesso, tipo_processo: e.target.value})}>
                   <option value="">Selecione o tipo...</option>
                   <option value="Administrativo">Administrativo</option>
-                  <option value="Cível">Cível</option>
+                  <option value="Civil">Civil</option>
                   <option value="Trabalhista">Trabalhista</option>
                   <option value="Criminal">Criminal</option>
                 </select>
@@ -2496,7 +2496,7 @@ export default function Dashboard() {
       { numero: prazosDoMes, rotulo: `${prazosDoMes === 1 ? "Prazo" : "Prazos"} em ${nomeMes}`, cor: CORES.marca, aba: "calendario" as AbaAdvogado },
       { numero: piscinaProcessos.length, rotulo: piscinaProcessos.length === 1 ? "Processo na piscina" : "Processos na piscina", cor: CORES.marca, aba: "piscina" as AbaAdvogado },
     ];
-    // 3 colunas lado a lado em tela larga; 2 em tela média (piscina embaixo, na largura toda); 1 no celular
+    // 3 colunas lado a lado em tela larga; 2 em tela média (próximos prazos embaixo, na largura toda); 1 no celular
     const colunasPainel = largura >= 1300 ? 3 : largura >= 900 ? 2 : 1;
 
     return (
@@ -2513,10 +2513,33 @@ export default function Dashboard() {
           ))}
         </section>
 
-        {/* Três colunas, do mais urgente para o opcional: próximos prazos, calendário e piscina.
-            Em tela média a piscina desce e ocupa a largura toda; no celular fica tudo empilhado */}
+        {/* Três colunas: piscina, calendário e próximos prazos.
+            Em tela média os próximos prazos descem e ocupam a largura toda; no celular fica tudo empilhado */}
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${colunasPainel}, minmax(0, 1fr))`, gap: "24px", alignItems: "start" }}>
-          <section style={styles.cartao} aria-label="Próximos prazos">
+          <section style={styles.cartao} aria-label="Piscina">
+            <div style={{ ...styles.cabCartao, flexWrap: "wrap" }}>
+              <h2 style={styles.tituloCartao}>Na piscina</h2>
+              <span style={styles.textoSecundario}>
+                {piscinaProcessos.length} {piscinaProcessos.length === 1 ? "processo aguardando" : "processos aguardando"} um responsável
+              </span>
+            </div>
+            {piscinaProcessos.length > 0 ? (
+              <>
+                {piscinaProcessos.slice(0, LIMITE_PISCINA_PAINEL).map(renderItemPiscina)}
+                {piscinaProcessos.length > LIMITE_PISCINA_PAINEL && (
+                  <button type="button" onClick={() => irPara("piscina")} style={{ ...styles.linkAcao, marginTop: "8px" }}>
+                    Ver todos ({piscinaProcessos.length})
+                  </button>
+                )}
+              </>
+            ) : (
+              <div style={styles.textoSecundario}>A piscina está vazia.</div>
+            )}
+          </section>
+
+          {renderCalendario(false)}
+
+          <section style={{ ...styles.cartao, minWidth: 0, gridColumn: colunasPainel === 2 ? "1 / -1" : undefined }} aria-label="Próximos prazos">
             <div style={styles.cabCartao}><h2 style={styles.tituloCartao}>Próximos prazos</h2></div>
             {proximos.length > 0 ? (
               <ul style={styles.listaSemMarcador}>
@@ -2546,29 +2569,6 @@ export default function Dashboard() {
               <button type="button" onClick={() => irPara("processos")} style={{ ...styles.linkAcao, marginTop: "8px" }}>
                 Ver todos ({prazosAbertos.length})
               </button>
-            )}
-          </section>
-
-          {renderCalendario(false)}
-
-          <section style={{ ...styles.cartao, minWidth: 0, gridColumn: colunasPainel === 2 ? "1 / -1" : undefined }} aria-label="Piscina">
-            <div style={{ ...styles.cabCartao, flexWrap: "wrap" }}>
-              <h2 style={styles.tituloCartao}>Na piscina</h2>
-              <span style={styles.textoSecundario}>
-                {piscinaProcessos.length} {piscinaProcessos.length === 1 ? "processo aguardando" : "processos aguardando"} um responsável
-              </span>
-            </div>
-            {piscinaProcessos.length > 0 ? (
-              <>
-                {piscinaProcessos.slice(0, LIMITE_PISCINA_PAINEL).map(renderItemPiscina)}
-                {piscinaProcessos.length > LIMITE_PISCINA_PAINEL && (
-                  <button type="button" onClick={() => irPara("piscina")} style={{ ...styles.linkAcao, marginTop: "8px" }}>
-                    Ver todos ({piscinaProcessos.length})
-                  </button>
-                )}
-              </>
-            ) : (
-              <div style={styles.textoSecundario}>A piscina está vazia.</div>
             )}
           </section>
         </div>
