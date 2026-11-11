@@ -231,7 +231,7 @@ def _sugerir_tipo_processo(segmento: int, classe: Optional[str]) -> Optional[str
     if any(p in classe_normalizada for p in PALAVRAS_CRIMINAIS):
         return "Criminal"
     if any(p in classe_normalizada for p in PALAVRAS_CIVEIS):
-        return "Cível"
+        return "Civil"
     return None
 
 def consultar_processo(cnj: str, db: Session) -> dict:
